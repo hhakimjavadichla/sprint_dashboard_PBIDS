@@ -1,0 +1,32 @@
+SprintNumber,SprintName,SprintStartDt,SprintEndDt,DaysOpen,CustomerPriority,DependencyOn,DependenciesLead,DependencySecured,Comments,TicketType,Section,CustomerName,TicketNum,TaskNum,Status,AssignedTo,Subject,TicketCreatedDt,TaskCreatedDt
+2,,11/13/2025,11/26/2025,24,,,,,,LAB-SR,CPM,"Brewster, Tina",1894272,2307091,Assigned,"Chavez, Claudia",LAB-SR: 1894272 - Outreach --------------------results not crossing over----------------,11/11/2025 14:10,11/11/2025 14:12
+2,,11/13/2025,11/26/2025,23,,,,,,LAB-SR,CPM,"Maglinte, Dennis",1894499,2307612,Assigned,"Maglinte, Dennis",LAB-SR: 1894499 - CPM - Dragen quote renewal,11/12/2025 10:48,11/12/2025 10:49
+2,,11/13/2025,11/26/2025,29,,,,,,LAB-SR,CPM,"Maglinte, Dennis",1893118,2304540,Assigned,"Maglinte, Dennis",LAB-SR: 1893118 - CPM/PIBIDS - Dell cluster load testing,11/6/2025 11:32,11/6/2025 11:33
+2,,11/13/2025,11/26/2025,29,,,,,,LAB-SR,CPM,"Maglinte, Dennis",1893116,2304537,Accepted,"Maglinte, Dennis",LAB-SR: 1893116 - CPM - Bionano NxClinical license renewal,11/6/2025 11:28,11/6/2025 11:28
+2,,11/13/2025,11/26/2025,36,,,,,,LAB-SR,CPM,"Maglinte, Dennis",1891255,2300723,Accepted,"Maglinte, Dennis",LAB-SR: 1891255 - CPM - XetaBase - Rectify renewal quote and past invoices,10/30/2025 11:20,10/30/2025 11:21
+2,,11/13/2025,11/26/2025,37,,,,,,LAB-PR,CPM,"Maglinte, Dennis",1891047,2300382,Assigned,"Maglinte, Dennis",LAB-PR: 1891047 - Review validation report template,10/29/2025 16:57,10/29/2025 19:38
+2,,11/13/2025,11/26/2025,37,,,,,,LAB-SR,CPM,"Maglinte, Dennis",1891064,2300377,Assigned,"Maglinte, Dennis","LAB-SR: 1891064 - Fastq, bam, and cram equivalency validation report",10/29/2025 19:26,10/29/2025 19:27
+2,,11/13/2025,11/26/2025,37,,,,,,LAB-SR,CPM,"Maglinte, Dennis",1891063,2300376,Assigned,"Maglinte, Dennis",LAB-SR: 1891063 - LBS pipeline update - AWS F2 validation report,10/29/2025 19:19,10/29/2025 19:21
+2,,11/13/2025,11/26/2025,37,,,,,,LAB-SR,CPM,"Maglinte, Dennis",1891062,2300375,Assigned,"Maglinte, Dennis",LAB-SR: 1891062 - CES pipeline update - AWS F2 validation report,10/29/2025 19:19,10/29/2025 19:19
+2,,11/13/2025,11/26/2025,37,,,,,,LAB-SR,CPM,"Maglinte, Dennis",1891061,2300374,Assigned,"Maglinte, Dennis",LAB-SR: 1891061 - VMD pipeline update - AWS F2 validation report,10/29/2025 19:17,10/29/2025 19:19
+2,,11/13/2025,11/26/2025,37,,,,,,LAB-PR,CPM,"Maglinte, Dennis",1891047,2300348,Assigned,"Maglinte, Dennis",LAB-PR: 1891047 - RNASeq - Validate Dragen upgrade v3.9 to v4.4 and AWS upgrade from F1 to F2,10/29/2025 16:57,10/29/2025 16:58
+2,,11/13/2025,11/26/2025,23,,,,,,LAB-PR,CPM,"Chamala, Srikar",1894547,2307767,Assigned,"Markowitz, Alexander",LAB-PR: 1894547 - PIBIDS/CPM - Label OK samples based on OncoTree criteria,11/12/2025 11:54,11/12/2025 13:03
+2,,11/13/2025,11/26/2025,23,,,,,,LAB-PR,CPM,"Chamala, Srikar",1894547,2307766,Assigned,"Markowitz, Alexander",LAB-PR: 1894547 - PIBIDS/CPM - Label OK samples based on SNOMED criteria,11/12/2025 11:54,11/12/2025 13:02
+2,,11/13/2025,11/26/2025,23,,,,,,LAB-PR,CPM,"Chamala, Srikar",1894547,2307765,Assigned,"Markowitz, Alexander",LAB-PR: 1894547 - PIBIDS/CPM - Label OK samples based on WHO criteria,11/12/2025 11:54,11/12/2025 13:01
+2,,11/13/2025,11/26/2025,23,,,,,,LAB-PR,CPM,"Chamala, Srikar",1894547,2307705,Assigned,"Markowitz, Alexander",LAB-PR: 1894547 - PIBIDS/CPM Prototype end-to-end workflow for clinical genomic data organization,11/12/2025 11:54,11/12/2025 12:07
+2,,11/13/2025,11/26/2025,23,,,,,,LAB-SR,CPM,"Maglinte, Dennis",1894514,2307638,Assigned,"Pan, Yachen",LAB-SR: 1894514 - CPM - DNA Methylation Sequencing Pipeline - finalize recommendations for changes,11/12/2025 11:11,11/12/2025 11:12
+2,,11/13/2025,11/26/2025,23,,,,,,LAB-SR,CPM,"Sharifi, Fatemeh",1894592,2307783,Accepted,"Sharifi, Fatemeh",LAB-SR: 1894592 - copy MISC samples to PLM account,11/12/2025 13:20,11/12/2025 13:21
+2,,11/13/2025,11/26/2025,23,,,,,,LAB-PR,CPM,"Chamala, Srikar",1894547,2307764,Assigned,"Sharifi, Fatemeh",LAB-PR: 1894547 - PIBIDS/CPM - CoPath ETL,11/12/2025 11:54,11/12/2025 13:00
+2,,11/13/2025,11/26/2025,24,,,,,,LAB-SR,CPM,"Mendez, Monica",1894292,2307130,Assigned,"Sharifi, Fatemeh","LAB-SR: 1894292 - Given that many of these pediatric cases involve very limited tissue, digita",11/11/2025 14:52,11/11/2025 14:56
+2,,11/13/2025,11/26/2025,28,,,,,,LAB-SR,CPM,"Sharifi, Fatemeh",1893354,2305082,Accepted,"Sharifi, Fatemeh",LAB-SR: 1893354 - CPM Batch LBS20251103.2 & LBS20251105,11/7/2025 10:35,11/7/2025 10:35
+2,,11/13/2025,11/26/2025,35,,,,,,LAB-SR,CPM,"Sharifi, Fatemeh",1891621,2301623,Accepted,"Sharifi, Fatemeh",LAB-SR: 1891621 - ETL pipeline to upload VarSeq report jsons to DataBricks,10/31/2025 14:46,10/31/2025 14:47
+2,,11/13/2025,11/26/2025,32,,,,,,LAB-SR,CPM,"Ji, Jianling",1892100,2302402,Assigned,"Sharma, Ankit",LAB-SR: 1892100 - Viewing issue in NxClinical for recent methylseq sample,11/3/2025 10:58,11/3/2025 11:00
+2,,11/13/2025,11/26/2025,36,,,,,,LAB-SR,CPM,"Maglinte, Dennis",1891368,2301003,Assigned,"Sharma, Ankit","LAB-SR: 1891368 - CPM - Xetabase: Generate excel file tracking all projects, studies, and coho",10/30/2025 15:40,10/30/2025 15:42
+2,,11/13/2025,11/26/2025,37,,,,,,LAB-PR,CPM,"Maglinte, Dennis",1891047,2300350,Assigned,"Sharma, Ankit",LAB-PR: 1891047 - Upgrade Genetrix,10/29/2025 16:57,10/29/2025 17:02
+2,,11/13/2025,11/26/2025,37,,,,,,LAB-PR,CPM,"Maglinte, Dennis",1891045,2300344,Assigned,"Sharma, Ankit",LAB-PR: 1891045 - XetaBase data loading - Historic VMD cases,10/29/2025 16:47,10/29/2025 16:51
+2,,11/13/2025,11/26/2025,37,,,,,,LAB-PR,CPM,"Maglinte, Dennis",1891045,2300343,Assigned,"Sharma, Ankit",LAB-PR: 1891045 - XetaBase data loading - Historic CES cases,10/29/2025 16:47,10/29/2025 16:50
+2,,11/13/2025,11/26/2025,37,,,,,,LAB-PR,CPM,"Maglinte, Dennis",1891045,2300331,Assigned,"Sharma, Ankit",LAB-PR: 1891045 - XetaBase data loading - Historic WGS cases,10/29/2025 16:47,10/29/2025 16:48
+2,,11/13/2025,11/26/2025,35,,,,,,LAB-PR,CPM,"Xu, Dong",1891536,2301385,Assigned,"Xu, Dong",LAB-PR 1891536 CPM include ai generated json into report generation,10/31/2025 10:59,10/31/2025 11:02
+2,,11/13/2025,11/26/2025,37,,,,,,LAB-PR,CPM,"Maglinte, Dennis",1891073,2300386,Assigned,"Xu, Dong",LAB-PR: 1891073 - CPM - Somatic WGS test development; includes tumor only and tumor/normal tes,10/29/2025 19:55,10/29/2025 19:56
+2,,11/13/2025,11/26/2025,37,,,,,,LAB-PR,CPM,"Maglinte, Dennis",1891070,2300385,Assigned,"Xu, Dong",LAB-PR: 1891070 - CPM - WGSv2 test development,10/29/2025 19:54,10/29/2025 19:55
+3,,11/27/2025,12/10/2025,,,,,,,,,,,,,,,,

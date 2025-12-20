@@ -1,0 +1,33 @@
+# Valid Lab Sections for Task Assignment
+# Admin users can reassign tasks to any of these sections
+
+[sections]
+valid_sections = [
+    "LSC - Laboratory Service Center",
+    "Micro - Microbiology",
+    "CoreLab - Coagulation",
+    "PCare",
+    "CoreLab - Hematology",
+    "HLA",
+    "LSC - Outreach Services",
+    "PIBIDS",
+    "Immunology",
+    "CoreLab - Chemistry",
+    "LSS - Send out Laboratory",
+    "Micro - Molecular Virology",
+    "CoreLab - Point of Care",
+    "CPM - Molecular",
+    "TM - Blood Bank",
+    "AP - Anatomic Pathology",
+    "LSS - Lab Support Services - MainLab",
+    "LSS - Lab Support Services - OPLab",
+    "CoreLab - Bone Marrow Lab",
+    "CPM - Cytogenetics",
+    "CoreLab - Special Chemistry",
+    "AP - Biorepository",
+    "TM - Donor Center",
+    "TM - Therapeutic Apheresis",
+]
+
+# Default section if none specified
+default_section = "PIBIDS"

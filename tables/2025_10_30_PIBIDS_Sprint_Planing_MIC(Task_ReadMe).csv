@@ -1,0 +1,16 @@
+Column Name,Description,Example / Notes
+SprintNumber,Sequential identifier for the sprint in which the task is planned or executed. Used for sorting and tracking over time.,1
+SprintName,"Descriptive sprint title, usually including the sprint number and date range.",PIBIDS Sprint 1 – 2025-10-29 to 2025-11-11
+SprintStartDt,Start date of the sprint. Used for timeline filtering and scheduling.,2025-10-29
+SprintEndDt,End date of the sprint. Marks the closure of that sprint cycle.,2025-11-11
+Section,"Identifies the lab section, team, or program area where the request or task originated. Helps categorize and filter cross-functional work.",CPM
+TicketNum,"External ticket or issue ID from iTrack, Jira, or ServiceNow for traceability.",1821530
+TaskNum,iTrack task ID used for quick reference within the tracker.,2131490
+AssignedTo,Primary team member responsible for the task’s completion.,John Smith
+EffortEstHrs,Estimated hours required to complete the task. Used for planning and workload balancing.,6
+Status,"Current progress state of the task. Recommended values: Planned, In Progress, Blocked, Completed, Deferred.",In Progress
+DependencyOn,"The team, individual, or system the task depends on before it can proceed.",Enterprise IS – API setup; CoreLab - Build Testing;
+DependenciesLead,Main contact or lead responsible for resolving the dependency.,Alex Johnson (IS); Dan Lincoln (CoreLab)
+DependencySecured,"Indicates if the dependency has been secured or cleared. Suggested values: Yes, Pending, No, NA.",Pending
+Comments,"Free-text field for notes, blockers, updates, or discussion items captured during meetings. Add date when these comments are added.","2025-10-29: Got confirmation from CoreLab vendor confirmation; 
+2025-10-30: Emailed but awaiting confirmation on participation from IS"

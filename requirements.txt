@@ -1,0 +1,31 @@
+# PIBIDS Sprint Dashboard Requirements
+# Core Framework
+streamlit>=1.30.0
+
+# Data Processing
+pandas==2.1.4
+numpy==1.26.2
+
+# Visualization
+plotly==5.18.0
+altair==5.2.0
+
+# Enhanced Components
+streamlit-aggrid==0.3.4.post3
+streamlit-option-menu==0.3.6
+streamlit-extras==0.3.6
+
+# Data Validation
+pydantic==2.5.3
+python-dateutil==2.8.2
+
+# Export
+openpyxl==3.1.2
+reportlab==4.0.7
+
+# Authentication
+streamlit-authenticator==0.2.3
+
+# Utilities
+pytz==2023.3
+tomli==2.0.1  # TOML parser for Python < 3.11

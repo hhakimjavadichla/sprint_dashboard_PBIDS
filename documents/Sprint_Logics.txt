@@ -1,0 +1,7 @@
+For New Sprint:
+Copy old uncompleted tasks from prior sprint to new sprint
+Copy new tasks from iTrack to new sprint
+Assign higher priority to older items approaching TAT
+Ensure estimated hours for each person does not exceed 52 hours
+Have option to create sprint document for each lab section once plan is locked
+  
