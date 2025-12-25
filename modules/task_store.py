@@ -29,8 +29,8 @@ CLOSED_STATUSES = [
 ]
 
 # Goal types for capacity planning
-GOAL_TYPES = ['Mandatory', 'Stretch']
-DEFAULT_GOAL_TYPE = 'Mandatory'
+GOAL_TYPES = ['None', 'Mandatory', 'Stretch']
+DEFAULT_GOAL_TYPE = 'None'
 
 # Capacity limits per person per sprint (based on 80 hours total)
 CAPACITY_LIMITS = {
@@ -594,10 +594,15 @@ class TaskStore:
                 assignee_tasks['GoalType'] == 'Stretch'
             ]['HoursEstimated'].fillna(0).sum()
             
-            total_hours = mandatory_hours + stretch_hours
+            none_hours = assignee_tasks[
+                (assignee_tasks['GoalType'] == 'None') | (assignee_tasks['GoalType'].isna()) | (assignee_tasks['GoalType'] == '')
+            ]['HoursEstimated'].fillna(0).sum()
+            
+            total_hours = mandatory_hours + stretch_hours + none_hours
             
             summary_data.append({
                 'AssignedTo': assignee,
+                'NoneHours': none_hours,
                 'MandatoryHours': mandatory_hours,
                 'StretchHours': stretch_hours,
                 'TotalHours': total_hours,

@@ -1,0 +1,55 @@
+# Column Descriptions Configuration
+# These descriptions appear as tooltips when hovering over column headers in AgGrid tables.
+# Admin can edit these descriptions to customize what users see.
+
+[descriptions]
+# Sprint fields
+SprintNumber = "The sprint number this task is assigned to"
+SprintName = "Name of the sprint"
+SprintStartDt = "Start date of the sprint"
+SprintEndDt = "End date of the sprint"
+SprintsAssigned = "List of all sprints this task has been assigned to"
+
+# Task identifiers
+TaskOrigin = "Whether task is New (created in this sprint) or Assigned (from backlog)"
+TicketNum = "The ticket/issue number from iTrack"
+TaskNum = "Task number within the ticket"
+TaskCount = "Task position (e.g., 1/3 means first of 3 tasks)"
+UniqueTaskId = "Unique identifier combining ticket and task numbers"
+
+# Task info
+TicketType = "Type of ticket: IR (Incident), SR (Service Request), NC (New Change)"
+Section = "Team/department responsible for this task"
+CustomerName = "Name of the customer who raised the ticket"
+Status = "Current status of the task"
+AssignedTo = "Team member assigned to this task"
+Subject = "Brief description of the task/ticket"
+
+# Dates
+TicketCreatedDt = "Date when the ticket was created"
+TaskCreatedDt = "Date when the task was created"
+TaskAssignedDt = "Date when the task was assigned"
+StatusUpdateDt = "Date of the last status update"
+
+# Metrics
+DaysOpen = "Number of days since task was assigned (affects priority)"
+DaysCreated = "Number of days since ticket was created"
+
+# Editable planning fields
+CustomerPriority = "Priority set by customer (0=Not needed, 1-5 scale, 5=Highest)"
+FinalPriority = "Final priority after team review (0=Not needed, 1-5 scale, 5=Highest)"
+GoalType = "Task goal classification: None, Mandatory, or Stretch"
+DependencyOn = "Other tasks or resources this task depends on"
+DependenciesLead = "Lead person for managing dependencies"
+DependencySecured = "Whether dependencies have been secured (Yes/Pending/No/NA)"
+Comments = "Additional notes or comments about the task"
+HoursEstimated = "Estimated hours to complete this task"
+
+# Hours fields
+TaskHoursSpent = "Actual hours spent on this task (from worklog)"
+TicketHoursSpent = "Total hours spent on the entire ticket"
+
+# Completed tasks specific
+CompletedInSprint = "Sprint number when task was completed"
+OriginalSprintNumber = "Sprint when the task was first created/assigned"
+IsCarryover = "Whether task was carried over from a previous sprint"

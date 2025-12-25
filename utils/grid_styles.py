@@ -171,6 +171,42 @@ def apply_grid_styles():
         font-size: 0.85rem !important;
     }
     
+    /* ===== FULLSCREEN AGGRID STYLES ===== */
+    /* Fullscreen container */
+    .fullscreen-container {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        z-index: 9999 !important;
+        background-color: white !important;
+        padding: 20px !important;
+        overflow: auto !important;
+    }
+    
+    .fullscreen-container .stAgGrid {
+        height: calc(100vh - 80px) !important;
+    }
+    
+    /* Fullscreen button styling */
+    .fullscreen-btn {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        z-index: 100;
+        background: #f0f2f6;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 4px 8px;
+        cursor: pointer;
+        font-size: 12px;
+    }
+    
+    .fullscreen-btn:hover {
+        background: #e0e2e6;
+    }
+    
     </style>
     """, unsafe_allow_html=True)
 
@@ -178,6 +214,24 @@ def apply_grid_styles():
 def get_custom_css():
     """Return custom CSS dict for AgGrid custom_css parameter"""
     return GRID_CUSTOM_CSS
+
+
+def fullscreen_toggle(key: str) -> bool:
+    """
+    Create a fullscreen toggle checkbox for AgGrid tables.
+    Returns True if fullscreen mode is enabled.
+    
+    Usage:
+        is_fullscreen = fullscreen_toggle("my_table")
+        height = "100vh" if is_fullscreen else 600
+        AgGrid(..., height=height)
+    """
+    return st.checkbox("⛶ Expand table", key=f"fullscreen_{key}", help="Toggle fullscreen view")
+
+
+def get_grid_height(is_fullscreen: bool, default_height: int = 600) -> int:
+    """Get appropriate height for AgGrid based on fullscreen state."""
+    return 900 if is_fullscreen else default_height
 
 
 # ===== COLOR CODING DEFINITIONS =====
@@ -311,3 +365,132 @@ def get_color_coded_column_defs():
         'Days Open': DAYS_OPEN_CELL_STYLE,
         'TaskOrigin': TASK_ORIGIN_CELL_STYLE,
     }
+
+
+def calc_column_width(header_name: str, min_width: int = 70, max_width: int = 250, 
+                      char_width: int = 9, padding: int = 30) -> int:
+    """
+    Calculate column width based on header name length.
+    
+    Args:
+        header_name: The column header text
+        min_width: Minimum column width in pixels
+        max_width: Maximum column width in pixels
+        char_width: Approximate pixels per character (default 9 for typical fonts)
+        padding: Extra padding for sort icon, filter icon, etc.
+    
+    Returns:
+        Calculated width in pixels
+    """
+    # Calculate based on header length
+    calculated = len(header_name) * char_width + padding
+    
+    # Clamp to min/max
+    return max(min_width, min(calculated, max_width))
+
+
+# Pre-calculated widths for common columns (ensures consistency across tables)
+COLUMN_WIDTHS = {
+    # Sprint fields
+    'SprintNumber': calc_column_width('✏️ SprintNumber'),
+    'SprintName': calc_column_width('SprintName'),
+    'SprintStartDt': calc_column_width('SprintStartDt'),
+    'SprintEndDt': calc_column_width('SprintEndDt'),
+    
+    # Task identifiers
+    'TaskOrigin': calc_column_width('TaskOrigin'),
+    'TicketNum': calc_column_width('TicketNum'),
+    'TaskNum': calc_column_width('TaskNum'),
+    'TaskCount': calc_column_width('Task#'),
+    'UniqueTaskId': calc_column_width('UniqueTaskId'),
+    
+    # Task info
+    'TicketType': calc_column_width('TicketType'),
+    'Section': calc_column_width('Section'),
+    'CustomerName': calc_column_width('CustomerName'),
+    'Status': calc_column_width('Status'),
+    'AssignedTo': calc_column_width('AssignedTo'),
+    'Subject': 200,  # Keep wide for long text
+    
+    # Dates
+    'TicketCreatedDt': calc_column_width('TicketCreatedDt'),
+    'TaskCreatedDt': calc_column_width('TaskCreatedDt'),
+    'TaskAssignedDt': calc_column_width('TaskAssignedDt'),
+    'StatusUpdateDt': calc_column_width('StatusUpdateDt'),
+    
+    # Metrics
+    'DaysOpen': calc_column_width('DaysOpen'),
+    'DaysCreated': calc_column_width('DaysCreated'),
+    
+    # Editable planning fields (with ✏️ prefix)
+    'CustomerPriority': calc_column_width('✏️ CustomerPriority'),
+    'FinalPriority': calc_column_width('✏️ FinalPriority'),
+    'GoalType': calc_column_width('✏️ GoalType'),
+    'DependencyOn': calc_column_width('✏️ DependencyOn'),
+    'DependenciesLead': calc_column_width('✏️ DependenciesLead'),
+    'DependencySecured': calc_column_width('✏️ DependencySecured'),
+    'Comments': calc_column_width('✏️ Comments'),
+    'HoursEstimated': calc_column_width('✏️ HoursEstimated'),
+    
+    # Hours fields
+    'TaskHoursSpent': calc_column_width('TaskHoursSpent'),
+    'TicketHoursSpent': calc_column_width('TicketHoursSpent'),
+    
+    # Completed tasks specific
+    'CompletedInSprint': calc_column_width('CompletedInSprint'),
+    'SprintsAssigned': calc_column_width('SprintsAssigned'),
+    'OriginalSprintNumber': calc_column_width('OriginalSprintNumber'),
+}
+
+
+# Load column descriptions from config file
+def _load_column_descriptions() -> dict:
+    """Load column descriptions from .streamlit/column_descriptions.toml"""
+    import os
+    try:
+        import tomli
+    except ImportError:
+        try:
+            import tomllib as tomli
+        except ImportError:
+            # Fallback to empty dict if toml library not available
+            return {}
+    
+    config_path = os.path.join(os.path.dirname(__file__), '..', '.streamlit', 'column_descriptions.toml')
+    
+    try:
+        with open(config_path, 'rb') as f:
+            config = tomli.load(f)
+            return config.get('descriptions', {})
+    except FileNotFoundError:
+        return {}
+    except Exception:
+        return {}
+
+# Column descriptions loaded from config file
+COLUMN_DESCRIPTIONS = _load_column_descriptions()
+
+
+def get_column_description(column_name: str) -> str:
+    """Get the description for a column to use as header tooltip."""
+    return COLUMN_DESCRIPTIONS.get(column_name, '')
+
+
+def get_column_width(column_name: str, header_name: str = None) -> int:
+    """
+    Get the width for a column, using pre-calculated widths or calculating on the fly.
+    
+    Args:
+        column_name: The column field name
+        header_name: Optional display header name (if different from column_name)
+    
+    Returns:
+        Width in pixels
+    """
+    # Check pre-calculated widths first
+    if column_name in COLUMN_WIDTHS:
+        return COLUMN_WIDTHS[column_name]
+    
+    # Calculate based on header name
+    display_name = header_name or column_name
+    return calc_column_width(display_name)

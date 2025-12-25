@@ -5,11 +5,11 @@ SprintsAssigned column tracks all sprint assignments for each task.
 """
 import streamlit as st
 import pandas as pd
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, JsCode
 from modules.task_store import get_task_store
 from modules.sprint_calendar import get_sprint_calendar
 from components.auth import require_admin, display_user_info
-from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, DAYS_OPEN_CELL_STYLE
+from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, COLUMN_DESCRIPTIONS, fullscreen_toggle, get_grid_height
 
 st.set_page_config(
     page_title="Work Backlogs",
@@ -28,12 +28,6 @@ if not require_admin():
 display_user_info()
 
 st.title("📋 Work Backlogs")
-st.markdown("""
-All **open tasks** appear here. As admin, you can:
-- Assign tasks to sprints (tasks can be assigned to multiple sprints over time)
-- Track sprint assignment history in the **Sprints Assigned** column
-- Completed tasks are automatically removed from this view
-""")
 
 # Get task store and sprint calendar
 task_store = get_task_store()
@@ -42,32 +36,55 @@ calendar = get_sprint_calendar()
 # Get backlog tasks (all open tasks)
 backlog_tasks = task_store.get_backlog_tasks()
 
-# Get available sprints for assignment
+# Get available sprints for assignment (only current and future)
 all_sprints = calendar.get_all_sprints()
 current_sprint = calendar.get_current_sprint()
+current_sprint_num = current_sprint['SprintNumber'] if current_sprint else 1
 
-# Display backlog stats
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.metric("📋 Open Tasks", len(backlog_tasks) if not backlog_tasks.empty else 0)
-with col2:
-    if current_sprint:
-        st.metric("🎯 Current Sprint", f"Sprint {current_sprint['SprintNumber']}")
-    else:
-        st.metric("🎯 Current Sprint", "None")
-with col3:
-    # Count unassigned tasks (no sprints assigned yet)
-    if not backlog_tasks.empty and 'SprintsAssigned' in backlog_tasks.columns:
-        unassigned = len(backlog_tasks[backlog_tasks['SprintsAssigned'].fillna('') == ''])
-        st.metric("⏳ Unassigned", unassigned)
-    else:
-        st.metric("⏳ Unassigned", 0)
-with col4:
-    if not backlog_tasks.empty and 'Section' in backlog_tasks.columns:
-        sections = backlog_tasks['Section'].nunique()
-        st.metric("📊 Sections", sections)
-    else:
-        st.metric("📊 Sections", 0)
+# Filter to only current and future sprints for assignment
+future_sprints = all_sprints[all_sprints['SprintNumber'] >= current_sprint_num].copy()
+
+st.markdown("""
+All **open tasks** appear here. As admin, you can:
+- Assign tasks to **current or future sprints**
+- Tasks can be assigned to multiple sprints over time
+- Track sprint assignment history in the **Sprints Assigned** column
+- Completed tasks are automatically moved to the **Completed Tasks** page
+""")
+
+# Summary metrics by ticket type
+if not backlog_tasks.empty and 'TicketType' in backlog_tasks.columns:
+    # Count tasks by type
+    type_counts = backlog_tasks['TicketType'].value_counts().to_dict()
+    
+    # Ticket type labels
+    type_labels = {
+        'SR': 'SR (Service Request)',
+        'PR': 'PR (Problem)',
+        'IR': 'IR (Incident)',
+        'NC': 'NC (New Change)',
+        'AD': 'AD (Admin)'
+    }
+    
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    
+    with col1:
+        st.metric("Total Tasks", len(backlog_tasks))
+    
+    with col2:
+        st.metric("SR", type_counts.get('SR', 0), help=type_labels['SR'])
+    
+    with col3:
+        st.metric("PR", type_counts.get('PR', 0), help=type_labels['PR'])
+    
+    with col4:
+        st.metric("IR", type_counts.get('IR', 0), help=type_labels['IR'])
+    
+    with col5:
+        st.metric("NC", type_counts.get('NC', 0), help=type_labels['NC'])
+    
+    with col6:
+        st.metric("AD", type_counts.get('AD', 0), help=type_labels['AD'])
 
 st.divider()
 
@@ -75,116 +92,102 @@ if backlog_tasks.empty:
     st.info("📭 **No open tasks.** All tasks are completed.")
     st.caption("Upload a new iTrack extract to add tasks to the backlog.")
 else:
-    # Filter controls
-    st.markdown("### 🔍 Filter Backlog")
-    
-    # Row 1: Standard filters
-    filter_col1, filter_col2, filter_col3, filter_col4, filter_col5 = st.columns(5)
-    
-    with filter_col1:
-        sections = ['All'] + sorted(backlog_tasks['Section'].dropna().unique().tolist())
-        section_filter = st.selectbox("Section", sections, key="backlog_section_filter")
-    
-    with filter_col2:
-        statuses = ['All'] + sorted(backlog_tasks['Status'].dropna().unique().tolist())
-        status_filter = st.selectbox("Status", statuses, key="backlog_status_filter")
-    
-    with filter_col3:
-        ticket_types = ['All'] + sorted(backlog_tasks['TicketType'].dropna().unique().tolist())
-        type_filter = st.selectbox("TicketType", ticket_types, key="backlog_type_filter")
-    
-    with filter_col4:
-        assignee_col = 'AssignedTo_Display' if 'AssignedTo_Display' in backlog_tasks.columns else 'AssignedTo'
-        assignees = ['All'] + sorted(backlog_tasks[assignee_col].dropna().unique().tolist())
-        assignee_filter = st.selectbox("AssignedTo", assignees, key="backlog_assignee_filter")
-    
-    with filter_col5:
-        # Filter by assignment status
-        assignment_options = ['All', 'Unassigned', 'Assigned']
-        assignment_filter = st.selectbox("Assignment", assignment_options, key="backlog_assignment_filter")
-    
-    # Row 2: Numeric filters
-    filter_col6, filter_col7 = st.columns(2)
-    
     # Calculate DaysCreated from TicketCreatedDt
     if 'TicketCreatedDt' in backlog_tasks.columns:
         from datetime import datetime
         backlog_tasks['DaysCreated'] = (datetime.now() - pd.to_datetime(backlog_tasks['TicketCreatedDt'], errors='coerce')).dt.days
     
-    with filter_col6:
-        # DaysOpen filter - dropdown with "more than" values
-        days_options = ['All', 0, 1, 3, 5, 7, 14, 21, 30, 60, 90]
-        days_open_min = st.selectbox("DaysOpen (Task) More Than", days_options, key="backlog_days_open_filter")
-    
-    with filter_col7:
-        # DaysCreated filter - dropdown with "more than" values
-        days_created_min = st.selectbox("DaysCreated (Ticket) More Than", days_options, key="backlog_days_created_filter")
-    
-    # Row 3: Column visibility
-    all_columns = ['SprintsAssigned', 'TicketNum', 'TicketType', 'Section', 'TaskNum', 'Status', 
-                   'AssignedTo', 'CustomerName', 'Subject', 'DaysOpen', 'DaysCreated', 'TicketCreatedDt', 'TaskCreatedDt']
-    default_visible = ['SprintsAssigned', 'TicketNum', 'TicketType', 'Section', 'TaskNum', 'Status', 
-                       'AssignedTo', 'CustomerName', 'Subject', 'DaysOpen', 'DaysCreated', 'TicketCreatedDt', 'TaskCreatedDt']
-    visible_columns = st.multiselect("Visible Columns", all_columns, default=default_visible, key="backlog_visible_cols")
-    
-    # Apply filters
+    # Use all backlog tasks (AgGrid has built-in filtering)
     display_tasks = backlog_tasks.copy()
+    assignee_col = 'AssignedTo_Display' if 'AssignedTo_Display' in backlog_tasks.columns else 'AssignedTo'
     
-    if section_filter != 'All':
-        display_tasks = display_tasks[display_tasks['Section'] == section_filter]
-    if status_filter != 'All':
-        display_tasks = display_tasks[display_tasks['Status'] == status_filter]
-    if type_filter != 'All':
-        display_tasks = display_tasks[display_tasks['TicketType'] == type_filter]
-    if assignee_filter != 'All':
-        display_tasks = display_tasks[display_tasks[assignee_col] == assignee_filter]
-    if assignment_filter == 'Unassigned':
-        display_tasks = display_tasks[display_tasks['SprintsAssigned'].fillna('') == '']
-    elif assignment_filter == 'Assigned':
-        display_tasks = display_tasks[display_tasks['SprintsAssigned'].fillna('') != '']
+    # Calculate TaskCount for each ticket (e.g., "1/3", "2/3", "3/3")
+    if 'TicketNum' in display_tasks.columns:
+        # Count tasks per ticket
+        ticket_counts = display_tasks.groupby('TicketNum').size().to_dict()
+        
+        # Sort by DaysCreated (oldest tickets first), then by TaskNum within ticket
+        display_tasks = display_tasks.sort_values(
+            by=['DaysCreated', 'TicketNum', 'TaskNum'],
+            ascending=[False, True, True],
+            na_position='last'
+        ).reset_index(drop=True)
+        
+        # Add TaskCount column and track ticket groups for row banding
+        task_counts = []
+        ticket_group_ids = []
+        current_group = 0
+        prev_ticket = None
+        task_counter = {}
+        
+        for idx, row in display_tasks.iterrows():
+            ticket = row['TicketNum']
+            total = ticket_counts.get(ticket, 1)
+            
+            # Track task number within ticket
+            if ticket not in task_counter:
+                task_counter[ticket] = 0
+            task_counter[ticket] += 1
+            task_counts.append(f"{task_counter[ticket]}/{total}")
+            
+            # Track ticket group for row banding
+            if ticket != prev_ticket:
+                current_group += 1
+                prev_ticket = ticket
+            ticket_group_ids.append(current_group)
+        
+        display_tasks['TaskCount'] = task_counts
+        display_tasks['_TicketGroup'] = ticket_group_ids
+        display_tasks['_IsMultiTask'] = display_tasks['TicketNum'].map(lambda x: ticket_counts.get(x, 1) > 1)
     
-    # Apply DaysOpen filter (more than selected value)
-    if days_open_min != 'All' and 'DaysOpen' in display_tasks.columns:
-        display_tasks = display_tasks[display_tasks['DaysOpen'].fillna(0) > days_open_min]
-    
-    # Apply DaysCreated filter (more than selected value)
-    if days_created_min != 'All' and 'DaysCreated' in display_tasks.columns:
-        display_tasks = display_tasks[display_tasks['DaysCreated'].fillna(0) > days_created_min]
-    
-    st.caption(f"Showing {len(display_tasks)} of {len(backlog_tasks)} open tasks")
-    
-    st.divider()
     
     # Sprint assignment section
     st.markdown("### 📤 Assign Tasks to Sprint")
     
-    # Sprint selector
-    if not all_sprints.empty:
-        sprint_options = sorted(all_sprints['SprintNumber'].unique().tolist(), reverse=True)
+    # Sprint selector - only current and future sprints
+    if not future_sprints.empty:
+        # Build sprint options with date ranges
+        sprint_display_options = []
+        sprint_num_map = {}
+        for _, row in future_sprints.iterrows():
+            sprint_num = row['SprintNumber']
+            start_dt = pd.to_datetime(row['SprintStartDt']).strftime('%m/%d/%Y')
+            end_dt = pd.to_datetime(row['SprintEndDt']).strftime('%m/%d/%Y')
+            display_text = f"Sprint {sprint_num}: {start_dt} - {end_dt}"
+            sprint_display_options.append(display_text)
+            sprint_num_map[display_text] = sprint_num
         
-        assign_col1, assign_col2 = st.columns([1, 3])
-        with assign_col1:
-            target_sprint = st.selectbox(
-                "Target Sprint",
-                sprint_options,
-                index=0 if current_sprint is None else sprint_options.index(current_sprint['SprintNumber']) if current_sprint['SprintNumber'] in sprint_options else 0,
-                key="target_sprint_select"
-            )
-        with assign_col2:
-            sprint_info = calendar.get_sprint_by_number(target_sprint)
-            if sprint_info:
-                st.info(f"📅 Sprint {target_sprint}: {sprint_info['SprintStartDt'].strftime('%m/%d/%Y')} - {sprint_info['SprintEndDt'].strftime('%m/%d/%Y')}")
+        # Sort by sprint number (descending)
+        sprint_display_options = sorted(sprint_display_options, key=lambda x: sprint_num_map[x], reverse=True)
+        
+        # Find default index
+        default_idx = 0
+        if current_sprint:
+            current_display = [k for k, v in sprint_num_map.items() if v == current_sprint['SprintNumber']]
+            if current_display and current_display[0] in sprint_display_options:
+                default_idx = sprint_display_options.index(current_display[0])
+        
+        selected_sprint_display = st.selectbox(
+            "Target Sprint",
+            sprint_display_options,
+            index=default_idx,
+            key="target_sprint_select"
+        )
+        target_sprint = sprint_num_map[selected_sprint_display]
     else:
         st.warning("No sprints available. Please set up sprint calendar first.")
         target_sprint = None
     
     st.divider()
     
-    # Prepare display dataframe
+    # Prepare display dataframe - same columns as Sprint Planning (plus SprintsAssigned for backlog)
     display_cols = [
-        'UniqueTaskId', 'SprintsAssigned', 'OriginalSprintNumber', 'TicketNum', 'TicketType', 'Section', 'TaskNum',
-        'Status', 'AssignedTo', 'CustomerName', 'Subject', 'DaysOpen', 'DaysCreated',
-        'TicketCreatedDt', 'TaskCreatedDt'
+        'UniqueTaskId', '_TicketGroup', '_IsMultiTask', 'SprintsAssigned',
+        'TicketNum', 'TaskCount', 'TicketType', 'Section', 'CustomerName', 'TaskNum',
+        'Status', 'AssignedTo', 'Subject', 'TicketCreatedDt', 'TaskCreatedDt',
+        'DaysOpen', 'CustomerPriority', 'FinalPriority', 'GoalType', 'DependencyOn',
+        'DependenciesLead', 'DependencySecured', 'Comments', 'HoursEstimated',
+        'TaskHoursSpent', 'TicketHoursSpent'
     ]
     
     # Use display name if available
@@ -215,32 +218,90 @@ else:
         headerCheckboxSelection=True
     )
     
+    # Hidden columns
     gb.configure_column('UniqueTaskId', hide=True)
-    gb.configure_column('OriginalSprintNumber', header_name='Created Sprint', width=110, hide=True)
-    gb.configure_column('TicketNum', header_name='TicketNum', width=100, hide='TicketNum' not in visible_columns)
-    gb.configure_column('TicketType', header_name='TicketType', width=80, hide='TicketType' not in visible_columns)
-    gb.configure_column('Section', header_name='Section', width=100, hide='Section' not in visible_columns)
-    gb.configure_column('TaskNum', header_name='TaskNum', width=90, hide='TaskNum' not in visible_columns)
-    gb.configure_column('Status', header_name='Status', width=90, cellStyle=STATUS_CELL_STYLE, hide='Status' not in visible_columns)
-    gb.configure_column('AssignedTo', header_name='AssignedTo', width=120, hide='AssignedTo' not in visible_columns)
-    gb.configure_column('CustomerName', header_name='CustomerName', width=120, hide='CustomerName' not in visible_columns)
-    gb.configure_column('Subject', header_name='Subject', width=250, tooltipField='Subject', hide='Subject' not in visible_columns)
-    gb.configure_column('DaysOpen', header_name='DaysOpen', width=90, cellStyle=DAYS_OPEN_CELL_STYLE, hide='DaysOpen' not in visible_columns)
-    gb.configure_column('DaysCreated', header_name='DaysCreated', width=100, hide='DaysCreated' not in visible_columns)
-    gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=115, hide='TicketCreatedDt' not in visible_columns)
-    gb.configure_column('TaskCreatedDt', header_name='TaskCreatedDt', width=110, hide='TaskCreatedDt' not in visible_columns)
+    gb.configure_column('_TicketGroup', hide=True)
+    gb.configure_column('_IsMultiTask', hide=True)
     
-    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=50)
+    # Ticket/Task info columns (same as Sprint Planning)
+    gb.configure_column('TicketNum', header_name='TicketNum', width=COLUMN_WIDTHS['TicketNum'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketNum', ''))
+    gb.configure_column('TaskCount', header_name='Task#', width=COLUMN_WIDTHS['TaskCount'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskCount', ''))
+    gb.configure_column('TicketType', header_name='TicketType', width=COLUMN_WIDTHS['TicketType'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketType', ''))
+    gb.configure_column('Section', header_name='Section', width=COLUMN_WIDTHS['Section'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('Section', ''))
+    gb.configure_column('CustomerName', header_name='CustomerName', width=COLUMN_WIDTHS['CustomerName'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('CustomerName', ''))
+    gb.configure_column('TaskNum', header_name='TaskNum', width=COLUMN_WIDTHS['TaskNum'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskNum', ''))
+    gb.configure_column('Status', header_name='Status', width=COLUMN_WIDTHS['Status'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('Status', ''), )
+    gb.configure_column('AssignedTo', header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('AssignedTo', ''))
+    gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS['Subject'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('Subject', ''), tooltipField='Subject')
+    gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=COLUMN_WIDTHS['TicketCreatedDt'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketCreatedDt', ''))
+    gb.configure_column('TaskCreatedDt', header_name='TaskCreatedDt', width=COLUMN_WIDTHS['TaskCreatedDt'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskCreatedDt', ''))
+    
+    # Metrics and planning fields (read-only in backlog, same as Sprint Planning)
+    gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('DaysOpen', ''), )
+    gb.configure_column('CustomerPriority', header_name='CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('CustomerPriority', ''))
+    gb.configure_column('FinalPriority', header_name='FinalPriority', width=COLUMN_WIDTHS['FinalPriority'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('FinalPriority', ''))
+    gb.configure_column('GoalType', header_name='GoalType', width=COLUMN_WIDTHS['GoalType'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('GoalType', ''))
+    gb.configure_column('DependencyOn', header_name='DependencyOn', width=COLUMN_WIDTHS['DependencyOn'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('DependencyOn', ''))
+    gb.configure_column('DependenciesLead', header_name='DependenciesLead', width=COLUMN_WIDTHS['DependenciesLead'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('DependenciesLead', ''), tooltipField='DependenciesLead')
+    gb.configure_column('DependencySecured', header_name='DependencySecured', width=COLUMN_WIDTHS['DependencySecured'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('DependencySecured', ''))
+    gb.configure_column('Comments', header_name='Comments', width=COLUMN_WIDTHS['Comments'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('Comments', ''), tooltipField='Comments')
+    gb.configure_column('HoursEstimated', header_name='HoursEstimated', width=COLUMN_WIDTHS['HoursEstimated'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('HoursEstimated', ''))
+    gb.configure_column('TaskHoursSpent', header_name='TaskHoursSpent', width=COLUMN_WIDTHS['TaskHoursSpent'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskHoursSpent', ''))
+    gb.configure_column('TicketHoursSpent', header_name='TicketHoursSpent', width=COLUMN_WIDTHS['TicketHoursSpent'],
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketHoursSpent', ''))
+    
+    # Show all rows (no pagination) - typically fewer than 200 open tasks
+    gb.configure_pagination(enabled=False)
+    
+    # Row styling for multi-task ticket groups (alternating colors)
+    row_style_jscode = JsCode("""
+    function(params) {
+        if (params.data._IsMultiTask) {
+            if (params.data._TicketGroup % 2 === 0) {
+                return { 'backgroundColor': '#e8f4e8' };  // Light green for even groups
+            } else {
+                return { 'backgroundColor': '#e8e8f4' };  // Light blue for odd groups
+            }
+        }
+        return null;
+    }
+    """)
     
     grid_options = gb.build()
+    grid_options['getRowStyle'] = row_style_jscode
     
     st.markdown("### 📋 Select Tasks to Assign")
-    st.caption("Click checkbox to select tasks. Tasks can be assigned to multiple sprints over time.")
+    col_title, col_expand = st.columns([4, 1])
+    with col_title:
+        st.caption("Click checkbox to select tasks. Tasks can be assigned to multiple sprints over time.")
+    with col_expand:
+        is_fullscreen = fullscreen_toggle("backlog_table")
     
     grid_response = AgGrid(
         grid_df,
         gridOptions=grid_options,
-        height=500,
+        height=get_grid_height(is_fullscreen, 500),
         theme='streamlit',
         update_mode=GridUpdateMode.SELECTION_CHANGED,
         fit_columns_on_grid_load=False,

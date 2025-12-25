@@ -11,7 +11,7 @@ from modules.task_store import get_task_store, CLOSED_STATUSES
 from modules.section_filter import filter_by_section, get_section_summary
 from components.auth import require_auth, display_user_info, get_user_role, get_user_section
 from utils.exporters import export_to_csv, export_to_excel
-from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE
+from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, fullscreen_toggle, get_grid_height
 
 st.set_page_config(
     page_title="Section View (Prototype)",
@@ -121,51 +121,19 @@ if user_section:
         st.write(", ".join(summary['team_members']))
         st.divider()
 
-# Filters
-with st.sidebar:
-    st.subheader("🔍 Filters")
-    
-    # Status filter
-    statuses = ['All'] + sorted(sprint_df['Status'].unique().tolist())
-    status_filter = st.multiselect("Status", statuses, default=['All'])
-    
-    # Priority filter
-    priority_range = st.slider("Priority Range", 0, 5, (0, 5))
-    
-    # Assignee filter
-    assignees = ['All'] + sorted(sprint_df['AssignedTo'].dropna().unique().tolist())
-    assignee_filter = st.multiselect("Assigned To", assignees, default=['All'])
-    
-    # Show only at-risk
-    show_at_risk = st.checkbox("Show only at-risk tasks")
-
-# Apply filters
+# Use all tasks (AgGrid has built-in filtering)
 filtered_df = sprint_df.copy()
 
-if 'All' not in status_filter and status_filter:
-    filtered_df = filtered_df[filtered_df['Status'].isin(status_filter)]
-
-# Priority filter
-filtered_df = filtered_df[
-    (filtered_df['CustomerPriority'].fillna(0) >= priority_range[0]) &
-    (filtered_df['CustomerPriority'].fillna(0) <= priority_range[1])
-]
-
-if 'All' not in assignee_filter and assignee_filter:
-    filtered_df = filtered_df[filtered_df['AssignedTo'].isin(assignee_filter)]
-
-if show_at_risk:
-    filtered_df = filtered_df[
-        ((filtered_df['TicketType'] == 'IR') & (filtered_df['DaysOpen'] >= 0.6)) |
-        ((filtered_df['TicketType'] == 'SR') & (filtered_df['DaysOpen'] >= 18))
-    ]
-
-st.caption(f"Showing {len(filtered_df)} of {len(sprint_df)} tasks")
+st.caption(f"Showing {len(filtered_df)} tasks")
 
 # Task table - Priority is editable for open tasks
 st.markdown("### Tasks")
-st.caption("💡 You can edit **Priority** for open tasks. Double-click the Priority cell to change it.")
-st.caption("**Priority values:** NotAssigned | 0=No longer needed | 1=Lowest | 2=Low | 3=Medium | 4=High | 5=Highest")
+col_info, col_expand = st.columns([4, 1])
+with col_info:
+    st.caption("💡 You can edit **Priority** for open tasks. Double-click the Priority cell to change it.")
+    st.caption("**Priority values:** NotAssigned | 0=No longer needed | 1=Lowest | 2=Low | 3=Medium | 4=High | 5=Highest")
+with col_expand:
+    is_fullscreen = fullscreen_toggle("section_view")
 
 if not filtered_df.empty:
     # Use display names if available
@@ -199,34 +167,34 @@ if not filtered_df.empty:
     gb.configure_default_column(resizable=True, filterable=True, sortable=True)
     gb.configure_column('UniqueTaskId', hide=True)
     gb.configure_column('_is_open', hide=True)
-    gb.configure_column('TaskNum', header_name='TaskNum', width=90)
-    gb.configure_column('TicketNum', header_name='TicketNum', width=100)
-    gb.configure_column('TicketType', header_name='TicketType', width=80)
-    gb.configure_column('Subject', header_name='Subject', width=180, tooltipField='Subject')
-    gb.configure_column('Status', header_name='Status', width=100, cellStyle=STATUS_CELL_STYLE)
-    gb.configure_column(sv_assignee_col, header_name='AssignedTo', width=120)
+    gb.configure_column('TaskNum', header_name='TaskNum', width=COLUMN_WIDTHS['TaskNum'])
+    gb.configure_column('TicketNum', header_name='TicketNum', width=COLUMN_WIDTHS['TicketNum'])
+    gb.configure_column('TicketType', header_name='TicketType', width=COLUMN_WIDTHS['TicketType'])
+    gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS['Subject'], tooltipField='Subject')
+    gb.configure_column('Status', header_name='Status', width=COLUMN_WIDTHS['Status'])
+    gb.configure_column(sv_assignee_col, header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'])
     # Priority is editable ONLY for open tasks (not completed/closed)
     priority_editable = JsCode("""
         function(params) {
             return params.data._is_open === true;
         }
     """)
-    gb.configure_column('CustomerPriority', header_name='CustomerPriority', width=115, 
+    gb.configure_column('CustomerPriority', header_name='CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'], 
                         editable=priority_editable,
                         cellStyle=PRIORITY_CELL_STYLE,
                         cellEditor='agSelectCellEditor',
                         cellEditorParams={'values': PRIORITY_VALUES})
-    gb.configure_column('DaysOpen', header_name='DaysOpen', width=90, cellStyle=DAYS_OPEN_CELL_STYLE)
-    gb.configure_column('HoursEstimated', header_name='HoursEstimated', width=115)
-    gb.configure_column('Comments', header_name='Comments', width=150, tooltipField='Comments')
-    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=100)
+    gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'])
+    gb.configure_column('HoursEstimated', header_name='HoursEstimated', width=COLUMN_WIDTHS['HoursEstimated'])
+    gb.configure_column('Comments', header_name='Comments', width=COLUMN_WIDTHS['Comments'], tooltipField='Comments')
+    gb.configure_pagination(enabled=False)
     
     grid_options = gb.build()
     
     grid_response = AgGrid(
         display_df,
         gridOptions=grid_options,
-        height=600,
+        height=get_grid_height(is_fullscreen, 600),
         theme='streamlit',
         update_mode=GridUpdateMode.VALUE_CHANGED,
         data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
@@ -338,50 +306,42 @@ with col2:
         st.write(f"**{label}**: {count} ({percentage:.0f}%)")
 
 # At-risk tasks highlight
-if show_at_risk or len(filtered_df[
+at_risk_df = filtered_df[
     ((filtered_df['TicketType'] == 'IR') & (filtered_df['DaysOpen'] >= 0.6)) |
     ((filtered_df['TicketType'] == 'SR') & (filtered_df['DaysOpen'] >= 18))
-]) > 0:
+]
+if len(at_risk_df) > 0:
     st.divider()
     st.markdown("### At-Risk Tasks")
+    st.warning(f"⚠️ {len(at_risk_df)} tasks are at risk of missing TAT")
     
-    at_risk_df = filtered_df[
-        ((filtered_df['TicketType'] == 'IR') & (filtered_df['DaysOpen'] >= 0.6)) |
-        ((filtered_df['TicketType'] == 'SR') & (filtered_df['DaysOpen'] >= 18))
-    ]
+    # Use display names if available
+    ar_assignee_col = 'AssignedTo_Display' if 'AssignedTo_Display' in at_risk_df.columns else 'AssignedTo'
+    ar_cols = ['TaskNum', 'Subject', 'DaysOpen', 'TicketType', 'Status', ar_assignee_col]
+    ar_cols = [c for c in ar_cols if c in at_risk_df.columns]
+    at_risk_display = at_risk_df[ar_cols].copy()
     
-    if not at_risk_df.empty:
-        st.warning(f"⚠️ {len(at_risk_df)} tasks are at risk of missing TAT")
-        
-        # Use display names if available
-        ar_assignee_col = 'AssignedTo_Display' if 'AssignedTo_Display' in at_risk_df.columns else 'AssignedTo'
-        ar_cols = ['TaskNum', 'Subject', 'DaysOpen', 'TicketType', 'Status', ar_assignee_col]
-        ar_cols = [c for c in ar_cols if c in at_risk_df.columns]
-        at_risk_display = at_risk_df[ar_cols].copy()
-        
-        gb_ar = GridOptionsBuilder.from_dataframe(at_risk_display)
-        gb_ar.configure_default_column(resizable=True, sortable=True)
-        gb_ar.configure_column('Subject', width=180, tooltipField='Subject')
-        gb_ar.configure_column(ar_assignee_col, header_name='Assignee', width=120)
-        grid_options_ar = gb_ar.build()
-        
-        AgGrid(
-            at_risk_display,
-            gridOptions=grid_options_ar,
-            height=250,
-            theme='streamlit',
-            fit_columns_on_grid_load=False,
-            custom_css=get_custom_css()
-        )
-    else:
-        st.success("No tasks at risk")
+    gb_ar = GridOptionsBuilder.from_dataframe(at_risk_display)
+    gb_ar.configure_default_column(resizable=True, sortable=True)
+    gb_ar.configure_column('Subject', width=180, tooltipField='Subject')
+    gb_ar.configure_column(ar_assignee_col, header_name='Assignee', width=120)
+    grid_options_ar = gb_ar.build()
+    
+    AgGrid(
+        at_risk_display,
+        gridOptions=grid_options_ar,
+        height=250,
+        theme='streamlit',
+        fit_columns_on_grid_load=False,
+        custom_css=get_custom_css()
+    )
 
 # Help section
 with st.expander("About This View"):
     st.markdown(f"""
     {'Viewing all sections (Admin mode)' if user_role == 'Admin' and not user_section else f'Viewing tasks for **{user_section}**'}
     
-    This is a read-only view. Use sidebar filters to narrow results. Export buttons available for offline analysis.
+    This is a read-only view. Use column filters in the table to narrow results. Export buttons available for offline analysis.
     
     **Priority Levels:** P5 Critical (red) · P4 High (yellow) · P3 and below (default)
     

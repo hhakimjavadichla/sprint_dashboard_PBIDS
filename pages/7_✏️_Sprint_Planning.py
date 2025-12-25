@@ -6,12 +6,12 @@ Admin can update custom planning fields for sprint tasks
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, JsCode
 from modules.task_store import get_task_store, VALID_STATUSES
 from modules.sprint_calendar import get_sprint_calendar
 from modules.capacity_validator import validate_capacity, get_capacity_dataframe
 from components.auth import require_admin, display_user_info
-from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, TASK_ORIGIN_CELL_STYLE
+from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, TASK_ORIGIN_CELL_STYLE, COLUMN_WIDTHS, get_column_width, COLUMN_DESCRIPTIONS, fullscreen_toggle, get_grid_height
 from utils.constants import VALID_SECTIONS
 
 st.set_page_config(
@@ -47,26 +47,45 @@ current_sprint = calendar.get_current_sprint()
 if not current_sprint:
     current_sprint = calendar.get_next_sprint()
 
-# Sprint selector
+# Sprint selector - only current and future sprints for planning
 all_sprints = calendar.get_all_sprints()
 if all_sprints.empty:
     st.error("No sprints defined. Please update data/sprint_calendar.csv")
     st.stop()
 
-# Build sprint options
+current_sprint_num = current_sprint['SprintNumber'] if current_sprint else 1
+
+# Build sprint options - ONLY current and future sprints
+# Completed tasks are excluded from planning
+COMPLETED_STATUSES = ['Completed', 'Closed', 'Resolved', 'Cancelled', 'Canceled']
+
 sprint_options = []
 default_idx = 0
 for idx, row in all_sprints.iterrows():
     sprint_num = int(row['SprintNumber'])
+    
+    # Skip past sprints - only show current and future
+    if sprint_num < current_sprint_num:
+        continue
+    
     label = f"Sprint {sprint_num}: {row['SprintName']} ({row['SprintStartDt'].strftime('%m/%d')} - {row['SprintEndDt'].strftime('%m/%d')})"
     
+    # Count only OPEN tasks (exclude completed)
     sprint_tasks = task_store.get_sprint_tasks(sprint_num)
-    task_count = len(sprint_tasks) if not sprint_tasks.empty else 0
+    if not sprint_tasks.empty:
+        open_tasks = sprint_tasks[~sprint_tasks['Status'].isin(COMPLETED_STATUSES)]
+        task_count = len(open_tasks)
+    else:
+        task_count = 0
     label += f" [{task_count} tasks]"
     
     sprint_options.append((sprint_num, label))
     if current_sprint and sprint_num == current_sprint['SprintNumber']:
         default_idx = len(sprint_options) - 1
+
+if not sprint_options:
+    st.error("No current or future sprints available for planning.")
+    st.stop()
 
 col1, col2 = st.columns([3, 1])
 
@@ -83,11 +102,9 @@ selected_sprint = calendar.get_sprint_by_number(selected_sprint_num)
 with col2:
     is_current = current_sprint and selected_sprint_num == current_sprint['SprintNumber']
     if is_current:
-        st.success("Current")
-    elif selected_sprint['SprintEndDt'] < datetime.now():
-        st.caption("Past")
+        st.success("Current Sprint")
     else:
-        st.caption("Upcoming")
+        st.info("Future Sprint")
 
 # Sprint info
 st.markdown(f"**{selected_sprint['SprintName']}** — {selected_sprint['SprintStartDt'].strftime('%b %d')} to {selected_sprint['SprintEndDt'].strftime('%b %d, %Y')}")
@@ -121,11 +138,22 @@ with st.expander("ℹ️ How to Use This Page", expanded=False):
 
 st.divider()
 
-# Get sprint tasks
+# Get sprint tasks - ONLY open tasks (exclude completed for planning)
 sprint_tasks = task_store.get_sprint_tasks(selected_sprint_num)
 
+# Filter out completed tasks - Sprint Planning is only for open/active tasks
+if not sprint_tasks.empty:
+    sprint_tasks = sprint_tasks[~sprint_tasks['Status'].isin(COMPLETED_STATUSES)].copy()
+
 if sprint_tasks.empty:
-    st.info(f"No tasks in Sprint {selected_sprint_num}.")
+    st.info(f"📭 No open tasks assigned to Sprint {selected_sprint_num}.")
+    st.markdown("""    
+    **To assign tasks:**
+    1. Go to **Work Backlogs** page
+    2. Select tasks you want to include in this sprint
+    3. Assign them to Sprint {}
+    """.format(selected_sprint_num))
+    st.page_link("pages/8_📋_Work_Backlogs.py", label="📋 Go to Work Backlogs", icon="📋")
     st.stop()
 
 # Filters
@@ -190,69 +218,11 @@ if not filtered_tasks.empty:
     # Get all available sprint numbers for dropdown
     all_sprint_numbers = sorted(all_sprints['SprintNumber'].unique().tolist())
     
-    # === Filter Controls ===
-    st.markdown("### 🔍 Filter Tasks")
-    
-    filter_col1, filter_col2, filter_col3, filter_col4, filter_col5 = st.columns(5)
-    
-    with filter_col1:
-        # Section filter
-        sections = ['All'] + sorted(filtered_tasks['Section'].dropna().unique().tolist())
-        section_filter = st.selectbox("Section", sections, key="plan_section_filter")
-    
-    with filter_col2:
-        # Status filter
-        statuses = ['All'] + sorted(filtered_tasks['Status'].dropna().unique().tolist())
-        status_filter = st.selectbox("Status", statuses, key="plan_status_filter")
-    
-    with filter_col3:
-        # TicketType filter
-        ticket_types = ['All'] + sorted(filtered_tasks['TicketType'].dropna().unique().tolist())
-        type_filter = st.selectbox("TicketType", ticket_types, key="plan_type_filter")
-    
-    with filter_col4:
-        # AssignedTo filter
-        assignee_col = 'AssignedTo_Display' if 'AssignedTo_Display' in filtered_tasks.columns else 'AssignedTo'
-        assignees = ['All'] + sorted(filtered_tasks[assignee_col].dropna().unique().tolist())
-        assignee_filter = st.selectbox("AssignedTo", assignees, key="plan_assignee_filter")
-    
-    with filter_col5:
-        # TaskOrigin filter (calculated later, so use placeholder)
-        origin_filter = st.selectbox("TaskOrigin", ['All', 'New', 'Carryover'], key="plan_origin_filter")
-    
-    # Apply filters to filtered_tasks
+    # Use all filtered tasks (AgGrid has built-in filtering)
     display_tasks = filtered_tasks.copy()
+    assignee_col = 'AssignedTo_Display' if 'AssignedTo_Display' in filtered_tasks.columns else 'AssignedTo'
     
-    if section_filter != 'All':
-        display_tasks = display_tasks[display_tasks['Section'] == section_filter]
-    if status_filter != 'All':
-        display_tasks = display_tasks[display_tasks['Status'] == status_filter]
-    if type_filter != 'All':
-        display_tasks = display_tasks[display_tasks['TicketType'] == type_filter]
-    if assignee_filter != 'All':
-        display_tasks = display_tasks[display_tasks[assignee_col] == assignee_filter]
-    
-    # TaskOrigin filter will be applied after calculating TaskOrigin
-    
-    st.caption(f"Showing {len(display_tasks)} of {len(filtered_tasks)} tasks")
-    
-    # Column visibility selector
-    all_columns = [
-        'SprintNumber', 'SprintName', 'SprintStartDt', 'SprintEndDt', 'TaskOrigin',
-        'TicketNum', 'TicketType', 'Section', 'CustomerName', 'TaskNum',
-        'Status', 'AssignedTo', 'Subject', 'TicketCreatedDt', 'TaskCreatedDt',
-        'DaysOpen', 'CustomerPriority', 'FinalPriority', 'DependencyOn',
-        'DependenciesLead', 'DependencySecured', 'Comments', 'HoursEstimated',
-        'TaskHoursSpent', 'TicketHoursSpent'
-    ]
-    
-    with st.expander("📋 Show/Hide Columns", expanded=False):
-        visible_columns = st.multiselect(
-            "Select columns to display:",
-            options=all_columns,
-            default=all_columns,
-            key="plan_visible_columns"
-        )
+    st.caption(f"Showing {len(display_tasks)} tasks")
     
     st.divider()
     
@@ -306,9 +276,44 @@ if not filtered_tasks.empty:
     else:
         edit_df['TaskOrigin'] = 'New'
     
-    # Apply TaskOrigin filter
-    if origin_filter != 'All':
-        edit_df = edit_df[edit_df['TaskOrigin'] == origin_filter]
+    # Calculate TaskCount for each ticket (e.g., "1/3", "2/3", "3/3")
+    if 'TicketNum' in edit_df.columns and 'DaysOpen' in edit_df.columns:
+        # Count tasks per ticket
+        ticket_counts = edit_df.groupby('TicketNum').size().to_dict()
+        
+        # Sort by DaysOpen (oldest tasks first), then by TaskNum within ticket
+        edit_df = edit_df.sort_values(
+            by=['DaysOpen', 'TicketNum', 'TaskNum'],
+            ascending=[False, True, True],
+            na_position='last'
+        ).reset_index(drop=True)
+        
+        # Add TaskCount column and track ticket groups for row banding
+        task_counts = []
+        ticket_group_ids = []
+        current_group = 0
+        prev_ticket = None
+        task_counter = {}
+        
+        for idx, row in edit_df.iterrows():
+            ticket = row['TicketNum']
+            total = ticket_counts.get(ticket, 1)
+            
+            # Track task number within ticket
+            if ticket not in task_counter:
+                task_counter[ticket] = 0
+            task_counter[ticket] += 1
+            task_counts.append(f"{task_counter[ticket]}/{total}")
+            
+            # Track ticket group for row banding
+            if ticket != prev_ticket:
+                current_group += 1
+                prev_ticket = ticket
+            ticket_group_ids.append(current_group)
+        
+        edit_df['TaskCount'] = task_counts
+        edit_df['_TicketGroup'] = ticket_group_ids
+        edit_df['_IsMultiTask'] = edit_df['TicketNum'].map(lambda x: ticket_counts.get(x, 1) > 1)
     
     # Use display name for AssignedTo if available
     if 'AssignedTo_Display' in edit_df.columns:
@@ -316,19 +321,19 @@ if not filtered_tasks.empty:
     
     # Ensure GoalType column exists
     if 'GoalType' not in edit_df.columns:
-        edit_df['GoalType'] = 'Mandatory'
+        edit_df['GoalType'] = 'None'
     
-    # Select columns in the specified order (only visible columns + UniqueTaskId for tracking)
+    # Select columns in the specified order (UniqueTaskId and hidden tracking columns always included)
+    # Columns aligned with Work Backlogs page (plus sprint-specific columns)
     full_column_order = [
-        'SprintNumber', 'SprintName', 'SprintStartDt', 'SprintEndDt', 'TaskOrigin',
-        'TicketNum', 'TicketType', 'Section', 'CustomerName', 'TaskNum',
+        'SprintNumber', 'SprintName', 'SprintStartDt', 'SprintEndDt', 'TaskOrigin', 'SprintsAssigned',
+        'TicketNum', 'TaskCount', 'TicketType', 'Section', 'CustomerName', 'TaskNum',
         'Status', 'AssignedTo', 'Subject', 'TicketCreatedDt', 'TaskCreatedDt',
         'DaysOpen', 'CustomerPriority', 'FinalPriority', 'GoalType', 'DependencyOn',
         'DependenciesLead', 'DependencySecured', 'Comments', 'HoursEstimated',
         'TaskHoursSpent', 'TicketHoursSpent'
     ]
-    # Filter to only show visible columns (UniqueTaskId always included for tracking)
-    display_order = ['UniqueTaskId'] + [col for col in full_column_order if col in visible_columns]
+    display_order = ['UniqueTaskId', '_TicketGroup', '_IsMultiTask'] + full_column_order
     
     available_cols = [col for col in display_order if col in edit_df.columns]
     edit_df = edit_df[available_cols].copy()
@@ -337,75 +342,133 @@ if not filtered_tasks.empty:
     gb = GridOptionsBuilder.from_dataframe(edit_df)
     gb.configure_default_column(resizable=True, sortable=True, filterable=True)
     
-    # Hidden column for tracking
+    # Hidden columns for tracking
     gb.configure_column('UniqueTaskId', hide=True)
+    gb.configure_column('_TicketGroup', hide=True)
+    gb.configure_column('_IsMultiTask', hide=True)
     
     # Configure columns - editable columns marked with ✏️ prefix
     # Sprint fields
-    gb.configure_column('SprintNumber', header_name='✏️ SprintNumber', width=115, editable=True,
+    gb.configure_column('SprintNumber', header_name='✏️ SprintNumber', width=COLUMN_WIDTHS['SprintNumber'], editable=True,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('SprintNumber', ''),
                         cellEditor='agSelectCellEditor',
                         cellEditorParams={'values': all_sprint_numbers})
-    gb.configure_column('SprintName', header_name='SprintName', width=110, editable=False)
-    gb.configure_column('SprintStartDt', header_name='SprintStartDt', width=100, editable=False)
-    gb.configure_column('SprintEndDt', header_name='SprintEndDt', width=100, editable=False)
+    gb.configure_column('SprintName', header_name='SprintName', width=COLUMN_WIDTHS['SprintName'], editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('SprintName', ''))
+    gb.configure_column('SprintStartDt', header_name='SprintStartDt', width=COLUMN_WIDTHS['SprintStartDt'], editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('SprintStartDt', ''))
+    gb.configure_column('SprintEndDt', header_name='SprintEndDt', width=COLUMN_WIDTHS['SprintEndDt'], editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('SprintEndDt', ''))
     
     # Task Origin (New vs Carryover) - with color coding
-    gb.configure_column('TaskOrigin', header_name='TaskOrigin', width=90, editable=False,
+    gb.configure_column('TaskOrigin', header_name='TaskOrigin', width=COLUMN_WIDTHS['TaskOrigin'], editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskOrigin', ''),
                         cellStyle=TASK_ORIGIN_CELL_STYLE)
     
+    # Sprints Assigned (read-only in Sprint Planning)
+    gb.configure_column('SprintsAssigned', header_name='Sprints Assigned', width=COLUMN_WIDTHS.get('SprintsAssigned', 130), editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('SprintsAssigned', ''))
+    
     # Ticket/Task info - non-editable
-    gb.configure_column('TicketNum', header_name='TicketNum', width=90, editable=False)
-    gb.configure_column('TicketType', header_name='TicketType', width=80, editable=False)
-    gb.configure_column('Section', header_name='Section', width=100, editable=False)
-    gb.configure_column('CustomerName', header_name='CustomerName', width=120, editable=False)
-    gb.configure_column('TaskNum', header_name='TaskNum', width=85, editable=False)
-    gb.configure_column('Status', header_name='Status', width=90, editable=False, cellStyle=STATUS_CELL_STYLE)
-    gb.configure_column('AssignedTo', header_name='AssignedTo', width=120, editable=False)
-    gb.configure_column('Subject', header_name='Subject', width=200, editable=False, tooltipField='Subject')
-    gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=115, editable=False)
-    gb.configure_column('TaskCreatedDt', header_name='TaskCreatedDt', width=110, editable=False)
+    gb.configure_column('TicketNum', header_name='TicketNum', width=COLUMN_WIDTHS['TicketNum'], editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketNum', ''))
+    gb.configure_column('TaskCount', header_name='Task#', width=COLUMN_WIDTHS['TaskCount'], editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskCount', ''))
+    gb.configure_column('TicketType', header_name='TicketType', width=COLUMN_WIDTHS['TicketType'], editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketType', ''))
+    gb.configure_column('Section', header_name='Section', width=COLUMN_WIDTHS['Section'], editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('Section', ''))
+    gb.configure_column('CustomerName', header_name='CustomerName', width=COLUMN_WIDTHS['CustomerName'], editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('CustomerName', ''))
+    gb.configure_column('TaskNum', header_name='TaskNum', width=COLUMN_WIDTHS['TaskNum'], editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskNum', ''))
+    gb.configure_column('Status', header_name='Status', width=COLUMN_WIDTHS['Status'], editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('Status', ''), )
+    gb.configure_column('AssignedTo', header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'], editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('AssignedTo', ''))
+    gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS['Subject'], editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('Subject', ''), tooltipField='Subject')
+    gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=COLUMN_WIDTHS['TicketCreatedDt'], editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketCreatedDt', ''))
+    gb.configure_column('TaskCreatedDt', header_name='TaskCreatedDt', width=COLUMN_WIDTHS['TaskCreatedDt'], editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskCreatedDt', ''))
     
     # Metrics and planning fields - editable ones marked with ✏️
-    gb.configure_column('DaysOpen', header_name='DaysOpen', width=90, editable=False, 
-                        type=['numericColumn'], cellStyle=DAYS_OPEN_CELL_STYLE)
-    gb.configure_column('CustomerPriority', header_name='✏️ CustomerPriority', width=130, editable=True,
+    gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'], editable=False, 
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('DaysOpen', ''),
+                        type=['numericColumn'], )
+    gb.configure_column('CustomerPriority', header_name='✏️ CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'], editable=True,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('CustomerPriority', ''),
                         cellStyle=PRIORITY_CELL_STYLE,
                         cellEditor='agSelectCellEditor',
                         cellEditorParams={'values': PRIORITY_VALUES})
-    gb.configure_column('FinalPriority', header_name='✏️ FinalPriority', width=115, editable=True,
+    gb.configure_column('FinalPriority', header_name='✏️ FinalPriority', width=COLUMN_WIDTHS['FinalPriority'], editable=True,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('FinalPriority', ''),
                         cellStyle=PRIORITY_CELL_STYLE,
                         cellEditor='agSelectCellEditor',
                         cellEditorParams={'values': PRIORITY_VALUES})
-    gb.configure_column('GoalType', header_name='✏️ GoalType', width=100, editable=True,
+    gb.configure_column('GoalType', header_name='✏️ GoalType', width=COLUMN_WIDTHS['GoalType'], editable=True,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('GoalType', ''),
                         cellEditor='agSelectCellEditor',
-                        cellEditorParams={'values': ['Mandatory', 'Stretch']})
-    gb.configure_column('DependencyOn', header_name='✏️ DependencyOn', width=125, editable=True)
-    gb.configure_column('DependenciesLead', header_name='✏️ DependenciesLead', width=140, editable=True)
-    gb.configure_column('DependencySecured', header_name='✏️ DependencySecured', width=145, editable=True,
-                        cellEditor='agSelectCellEditor',
-                        cellEditorParams={'values': DEPENDENCY_SECURED_VALUES})
-    gb.configure_column('Comments', header_name='✏️ Comments', width=130, editable=True, tooltipField='Comments',
+                        cellEditorParams={'values': ['None', 'Mandatory', 'Stretch']})
+    gb.configure_column('DependencyOn', header_name='✏️ DependencyOn', width=COLUMN_WIDTHS['DependencyOn'], editable=True,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('DependencyOn', ''))
+    gb.configure_column('DependenciesLead', header_name='✏️ DependenciesLead', width=COLUMN_WIDTHS['DependenciesLead'], editable=True,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('DependenciesLead', ''),
+                        tooltipField='DependenciesLead',
                         cellEditor='agLargeTextCellEditor',
                         cellEditorPopup=True,
                         cellEditorParams={'maxLength': 1000, 'rows': 10, 'cols': 50})
-    gb.configure_column('HoursEstimated', header_name='✏️ HoursEstimated', width=130, editable=True, type=['numericColumn'])
-    gb.configure_column('TaskHoursSpent', header_name='TaskHoursSpent', width=115, editable=False, type=['numericColumn'])
-    gb.configure_column('TicketHoursSpent', header_name='TicketHoursSpent', width=125, editable=False, type=['numericColumn'])
+    gb.configure_column('DependencySecured', header_name='✏️ DependencySecured', width=COLUMN_WIDTHS['DependencySecured'], editable=True,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('DependencySecured', ''),
+                        cellEditor='agSelectCellEditor',
+                        cellEditorParams={'values': DEPENDENCY_SECURED_VALUES})
+    gb.configure_column('Comments', header_name='✏️ Comments', width=COLUMN_WIDTHS['Comments'], editable=True,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('Comments', ''),
+                        tooltipField='Comments',
+                        cellEditor='agLargeTextCellEditor',
+                        cellEditorPopup=True,
+                        cellEditorParams={'maxLength': 1000, 'rows': 10, 'cols': 50})
+    gb.configure_column('HoursEstimated', header_name='✏️ HoursEstimated', width=COLUMN_WIDTHS['HoursEstimated'], editable=True,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('HoursEstimated', ''), type=['numericColumn'])
+    gb.configure_column('TaskHoursSpent', header_name='TaskHoursSpent', width=COLUMN_WIDTHS['TaskHoursSpent'], editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskHoursSpent', ''), type=['numericColumn'])
+    gb.configure_column('TicketHoursSpent', header_name='TicketHoursSpent', width=COLUMN_WIDTHS['TicketHoursSpent'], editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketHoursSpent', ''), type=['numericColumn'])
     
-    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=100)
+    gb.configure_pagination(enabled=False)
     gb.configure_selection(selection_mode='multiple', use_checkbox=False)
     
+    # Row styling for multi-task ticket groups (alternating colors)
+    row_style_jscode = JsCode("""
+    function(params) {
+        if (params.data._IsMultiTask) {
+            if (params.data._TicketGroup % 2 === 0) {
+                return { 'backgroundColor': '#e8f4e8' };  // Light green for even groups
+            } else {
+                return { 'backgroundColor': '#e8e8f4' };  // Light blue for odd groups
+            }
+        }
+        return null;
+    }
+    """)
+    
     grid_options = gb.build()
+    grid_options['getRowStyle'] = row_style_jscode
     
     st.markdown("### 📝 Edit Planning Fields")
-    st.caption("✏️ = Editable column (double-click to edit). Changes are saved when you click 'Save Changes' below.")
-    st.caption("**Priority values:** NotAssigned | 0=No longer needed | 1=Lowest | 2=Low | 3=Medium | 4=High | 5=Highest")
+    col_info, col_expand = st.columns([4, 1])
+    with col_info:
+        st.caption("✏️ = Editable column (double-click to edit). Changes are saved when you click 'Save Changes' below.")
+        st.caption("**Priority values:** NotAssigned | 0=No longer needed | 1=Lowest | 2=Low | 3=Medium | 4=High | 5=Highest")
+    with col_expand:
+        is_fullscreen = fullscreen_toggle("planning_table")
     
     # Display editable grid
     grid_response = AgGrid(
         edit_df,
         gridOptions=grid_options,
-        height=600,
+        height=get_grid_height(is_fullscreen, 600),
         theme='streamlit',
         update_mode=GridUpdateMode.VALUE_CHANGED,
         data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
@@ -430,10 +493,14 @@ if not filtered_tasks.empty:
     if not capacity_summary.empty:
         # Display as a styled table
         for idx, row in capacity_summary.iterrows():
-            col_name, col_mand, col_stretch, col_total = st.columns([2, 2, 2, 2])
+            col_name, col_none, col_mand, col_stretch, col_total = st.columns([2, 1.5, 2, 2, 2])
             
             with col_name:
                 st.write(f"**{row['AssignedTo']}**")
+            
+            with col_none:
+                none_hrs = row.get('NoneHours', 0)
+                st.write(f"⚪ None: **{none_hrs:.1f}** hrs")
             
             with col_mand:
                 mand_hrs = row['MandatoryHours']

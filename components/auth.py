@@ -57,25 +57,33 @@ def login(username: str, password: str) -> Tuple[bool, str]:
         Tuple of (success, error_message)
     """
     try:
-        # Get credentials from secrets
+        # Try user store first (CSV-based)
+        from modules.user_store import get_user_store
+        user_store = get_user_store()
+        
+        success, user_info = user_store.authenticate(username, password)
+        
+        if success and user_info:
+            st.session_state.authenticated = True
+            st.session_state.username = user_info['username']
+            st.session_state.user_role = user_info['role']
+            st.session_state.user_section = user_info['section']
+            st.session_state.display_name = user_info['display_name']
+            return True, ""
+        
+        # Fall back to secrets (for backward compatibility)
         credentials = st.secrets.get('credentials', {})
         user_roles = st.secrets.get('user_roles', {})
         user_sections = st.secrets.get('user_sections', {})
         
-        # Check credentials
-        if username not in credentials:
-            return False, "Invalid username or password"
+        if username in credentials and credentials[username] == password:
+            st.session_state.authenticated = True
+            st.session_state.username = username
+            st.session_state.user_role = user_roles.get(username, 'Section User')
+            st.session_state.user_section = user_sections.get(username)
+            return True, ""
         
-        if credentials[username] != password:
-            return False, "Invalid username or password"
-        
-        # Set session state
-        st.session_state.authenticated = True
-        st.session_state.username = username
-        st.session_state.user_role = user_roles.get(username, 'Section User')
-        st.session_state.user_section = user_sections.get(username)
-        
-        return True, ""
+        return False, "Invalid username or password"
     
     except Exception as e:
         return False, f"Authentication error: {str(e)}"

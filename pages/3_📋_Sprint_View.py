@@ -11,7 +11,7 @@ from modules.task_store import get_task_store, CLOSED_STATUSES
 from modules.sprint_calendar import get_sprint_calendar
 from components.auth import require_admin, display_user_info, is_admin
 from utils.exporters import export_to_csv, export_to_excel
-from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE
+from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, fullscreen_toggle, get_grid_height
 
 st.set_page_config(
     page_title="Sprint View (Prototype)",
@@ -128,43 +128,15 @@ st.divider()
 tab1, tab2, tab3 = st.tabs(["All Tasks", "Update Status", "Distribution"])
 
 with tab1:
-    # Filters in sidebar
-    with st.sidebar:
-        st.markdown("**Filters**")
-        
-        # Status filter
-        all_statuses = sprint_tasks['Status'].unique().tolist() if 'Status' in sprint_tasks.columns else []
-        status_filter = st.multiselect("Status", options=all_statuses, default=all_statuses)
-        
-        # Carryover filter
-        show_option = st.radio(
-            "Show Tasks",
-            options=['All', 'Original Only', 'Carryover Only'],
-        )
-        
-        # Assignee filter - use display names
-        tab1_assignee_col = 'AssignedTo_Display' if 'AssignedTo_Display' in sprint_tasks.columns else 'AssignedTo'
-        if tab1_assignee_col in sprint_tasks.columns:
-            all_assignees = sorted(sprint_tasks[tab1_assignee_col].dropna().unique().tolist())
-            assignee_filter = st.multiselect("Assignee", options=all_assignees, default=all_assignees)
-        else:
-            assignee_filter = []
-    
-    # Apply filters
+    # Use all tasks (AgGrid has built-in filtering)
+    tab1_assignee_col = 'AssignedTo_Display' if 'AssignedTo_Display' in sprint_tasks.columns else 'AssignedTo'
     filtered_df = sprint_tasks.copy()
     
-    if status_filter:
-        filtered_df = filtered_df[filtered_df['Status'].isin(status_filter)]
-    
-    if show_option == 'Original Only' and 'IsCarryover' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['IsCarryover'] == False]
-    elif show_option == 'Carryover Only' and 'IsCarryover' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['IsCarryover'] == True]
-    
-    if assignee_filter and tab1_assignee_col in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df[tab1_assignee_col].isin(assignee_filter)]
-    
-    st.caption(f"Showing {len(filtered_df)} of {len(sprint_tasks)} tasks")
+    col_info, col_expand = st.columns([4, 1])
+    with col_info:
+        st.caption(f"Showing {len(filtered_df)} tasks")
+    with col_expand:
+        is_fullscreen_tab1 = fullscreen_toggle("sprint_view_tab1")
     
     # Display columns - use display name for assignee
     display_cols = [
@@ -177,24 +149,24 @@ with tab1:
     # Configure grid
     gb = GridOptionsBuilder.from_dataframe(filtered_df[display_cols])
     gb.configure_default_column(resizable=True, filterable=True, sortable=True)
-    gb.configure_column('Subject', header_name='Subject', width=180, tooltipField='Subject')
-    gb.configure_column('UniqueTaskId', header_name='UniqueTaskId', width=120)
-    gb.configure_column('TaskNum', header_name='TaskNum', width=100)
-    gb.configure_column('IsCarryover', header_name='IsCarryover', width=100)
-    gb.configure_column(tab1_assignee_col, header_name='AssignedTo', width=120)
-    gb.configure_column('Status', header_name='Status', width=100, cellStyle=STATUS_CELL_STYLE)
-    gb.configure_column('TicketType', header_name='TicketType', width=80)
-    gb.configure_column('OriginalSprintNumber', header_name='OriginalSprintNumber', width=140)
-    gb.configure_column('TaskAssignedDt', header_name='TaskAssignedDt', width=115)
-    gb.configure_column('StatusUpdateDt', header_name='StatusUpdateDt', width=115)
-    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=100)
+    gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS['Subject'], tooltipField='Subject')
+    gb.configure_column('UniqueTaskId', header_name='UniqueTaskId', width=COLUMN_WIDTHS['UniqueTaskId'])
+    gb.configure_column('TaskNum', header_name='TaskNum', width=COLUMN_WIDTHS['TaskNum'])
+    gb.configure_column('IsCarryover', header_name='IsCarryover', width=COLUMN_WIDTHS.get('IsCarryover', 100))
+    gb.configure_column(tab1_assignee_col, header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'])
+    gb.configure_column('Status', header_name='Status', width=COLUMN_WIDTHS['Status'])
+    gb.configure_column('TicketType', header_name='TicketType', width=COLUMN_WIDTHS['TicketType'])
+    gb.configure_column('OriginalSprintNumber', header_name='OriginalSprintNumber', width=COLUMN_WIDTHS['OriginalSprintNumber'])
+    gb.configure_column('TaskAssignedDt', header_name='TaskAssignedDt', width=COLUMN_WIDTHS['TaskAssignedDt'])
+    gb.configure_column('StatusUpdateDt', header_name='StatusUpdateDt', width=COLUMN_WIDTHS['StatusUpdateDt'])
+    gb.configure_pagination(enabled=False)
     
     grid_options = gb.build()
     
     AgGrid(
         filtered_df[display_cols],
         gridOptions=grid_options,
-        height=600,
+        height=get_grid_height(is_fullscreen_tab1, 600),
         theme='streamlit',
         fit_columns_on_grid_load=False,
         enable_enterprise_modules=False,
@@ -247,57 +219,13 @@ with tab2:
         else:
             st.info(f"📝 {len(open_tasks)} open tasks available for status update")
             
-            # --- Filtering Section ---
-            st.markdown("#### 🔍 Filter Tasks")
-            filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
-            
-            with filter_col1:
-                sections = ['All'] + sorted(open_tasks['Section'].dropna().unique().tolist()) if 'Section' in open_tasks.columns else ['All']
-                filter_section = st.selectbox("Section", sections, key="update_filter_section")
-            
-            with filter_col2:
-                # Use display names for assignee filter
-                assignee_col = 'AssignedTo_Display' if 'AssignedTo_Display' in open_tasks.columns else 'AssignedTo'
-                assignees = ['All'] + sorted(open_tasks[assignee_col].dropna().unique().tolist()) if assignee_col in open_tasks.columns else ['All']
-                filter_assignee = st.selectbox("Assigned To", assignees, key="update_filter_assignee")
-            
-            with filter_col3:
-                statuses = ['All'] + sorted(open_tasks['Status'].dropna().unique().tolist()) if 'Status' in open_tasks.columns else ['All']
-                filter_status = st.selectbox("Status", statuses, key="update_filter_status")
-            
-            with filter_col4:
-                types = ['All'] + sorted(open_tasks['TicketType'].dropna().unique().tolist()) if 'TicketType' in open_tasks.columns else ['All']
-                filter_type = st.selectbox("Ticket Type", types, key="update_filter_type")
-            
-            search_text = st.text_input("🔎 Search (Task ID, Subject, Ticket#)", placeholder="Type to search...", key="update_search")
-            
-            # Apply filters
+            # Use all open tasks (AgGrid has built-in filtering)
             filtered_tasks = open_tasks.copy()
+            assignee_col = 'AssignedTo_Display' if 'AssignedTo_Display' in open_tasks.columns else 'AssignedTo'
             
-            if filter_section != 'All' and 'Section' in filtered_tasks.columns:
-                filtered_tasks = filtered_tasks[filtered_tasks['Section'] == filter_section]
-            if filter_assignee != 'All' and assignee_col in filtered_tasks.columns:
-                filtered_tasks = filtered_tasks[filtered_tasks[assignee_col] == filter_assignee]
-            if filter_status != 'All' and 'Status' in filtered_tasks.columns:
-                filtered_tasks = filtered_tasks[filtered_tasks['Status'] == filter_status]
-            if filter_type != 'All' and 'TicketType' in filtered_tasks.columns:
-                filtered_tasks = filtered_tasks[filtered_tasks['TicketType'] == filter_type]
+            st.caption(f"Showing {len(filtered_tasks)} open tasks")
             
-            if search_text:
-                search_lower = search_text.lower()
-                mask = (
-                    filtered_tasks['TaskNum'].astype(str).str.lower().str.contains(search_lower, na=False) |
-                    filtered_tasks['Subject'].astype(str).str.lower().str.contains(search_lower, na=False) |
-                    filtered_tasks['TicketNum'].astype(str).str.lower().str.contains(search_lower, na=False) |
-                    filtered_tasks['UniqueTaskId'].astype(str).str.lower().str.contains(search_lower, na=False)
-                )
-                filtered_tasks = filtered_tasks[mask]
-            
-            st.caption(f"Showing {len(filtered_tasks)} of {len(open_tasks)} open tasks")
-            
-            if filtered_tasks.empty:
-                st.warning("No tasks match the current filters. Try adjusting your filters.")
-            else:
+            if not filtered_tasks.empty:
                 # Prepare display dataframe with better formatting
                 display_df = filtered_tasks.copy()
                 
@@ -329,14 +257,14 @@ with tab2:
                     use_checkbox=True,
                     header_checkbox=True
                 )
-                gb.configure_column('SprintTaskId', header_name='SprintTaskId', width=120, pinned='left')
-                gb.configure_column('Status', header_name='Status', width=100, cellStyle=STATUS_CELL_STYLE)
-                gb.configure_column(assignee_col, header_name='AssignedTo', width=120)
-                gb.configure_column('Section', header_name='Section', width=100)
-                gb.configure_column('TicketType', header_name='TicketType', width=80)
-                gb.configure_column('AssignedDate', header_name='AssignedDate', width=110)
-                gb.configure_column('DaysOpen', header_name='DaysOpen', width=90, cellStyle=DAYS_OPEN_CELL_STYLE)
-                gb.configure_column('Subject', header_name='Subject', width=180, tooltipField='Subject')
+                gb.configure_column('SprintTaskId', header_name='SprintTaskId', width=COLUMN_WIDTHS.get('SprintTaskId', 120), pinned='left')
+                gb.configure_column('Status', header_name='Status', width=COLUMN_WIDTHS['Status'])
+                gb.configure_column(assignee_col, header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'])
+                gb.configure_column('Section', header_name='Section', width=COLUMN_WIDTHS['Section'])
+                gb.configure_column('TicketType', header_name='TicketType', width=COLUMN_WIDTHS['TicketType'])
+                gb.configure_column('AssignedDate', header_name='AssignedDate', width=COLUMN_WIDTHS.get('AssignedDate', 115))
+                gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'])
+                gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS['Subject'], tooltipField='Subject')
                 gb.configure_column('UniqueTaskId', hide=True)  # Hidden but needed for reference
                 
                 grid_options = gb.build()

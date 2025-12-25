@@ -1,6 +1,7 @@
 """
 Upload Tasks Page
 Simple task import from iTrack - tasks auto-assign to sprints by Task Assigned Date
+Also supports worklog import for activity tracking.
 """
 import streamlit as st
 import pandas as pd
@@ -8,6 +9,7 @@ from datetime import datetime
 from modules.data_loader import DataLoader
 from modules.task_store import get_task_store, CLOSED_STATUSES
 from modules.sprint_calendar import get_sprint_calendar
+from modules.worklog_store import get_worklog_store, reset_worklog_store
 from components.auth import require_admin, display_user_info
 
 st.set_page_config(
@@ -226,3 +228,52 @@ else:
             st.success(f"📅 Current Sprint: **Sprint {current_sprint['SprintNumber']} - {current_sprint['SprintName']}** ({current_sprint['SprintStartDt'].strftime('%Y-%m-%d')} to {current_sprint['SprintEndDt'].strftime('%Y-%m-%d')})")
         
         st.page_link("pages/3_📋_Sprint_View.py", label="📋 Go to Sprint View", icon="📋")
+
+# Worklog Upload Section
+st.divider()
+st.header("📝 Upload Worklog Data")
+st.markdown("""
+Upload the iTrack **Worklog export** to track team member activity.
+This is a separate CSV file from the task export.
+""")
+
+worklog_file = st.file_uploader(
+    "Choose iTrack Worklog CSV file",
+    type=['csv'],
+    help="Upload the iTrack worklog table export (UTF-16, tab-delimited)",
+    key="worklog_upload"
+)
+
+if worklog_file:
+    worklog_store = get_worklog_store()
+    
+    with st.spinner("Importing worklog data..."):
+        success, message, stats = worklog_store.import_worklog(file_content=worklog_file.read())
+    
+    if success:
+        st.success(f"✅ {message}")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Rows", stats['total'])
+        with col2:
+            st.metric("Valid Logs", stats['valid_logs'])
+        with col3:
+            st.metric("Skipped", stats['skipped'])
+        
+        # Reset singleton to reload data
+        reset_worklog_store()
+        
+        st.page_link("pages/9_📊_Worklog_Activity.py", label="📊 View Worklog Activity Report", icon="📊")
+    else:
+        st.error(f"❌ {message}")
+else:
+    # Show current worklog status
+    worklog_store = get_worklog_store()
+    all_worklogs = worklog_store.get_all_worklogs()
+    
+    if not all_worklogs.empty:
+        st.info(f"📊 Current worklog data: **{len(all_worklogs)}** entries loaded")
+        st.page_link("pages/9_📊_Worklog_Activity.py", label="📊 View Worklog Activity Report", icon="📊")
+    else:
+        st.caption("No worklog data imported yet.")
