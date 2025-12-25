@@ -1,13 +1,18 @@
 """
 Admin Configuration Page
-Configure sprint calendar and user accounts.
+Configure sprint calendar, user accounts, and team members.
 """
 import streamlit as st
 import pandas as pd
+import toml
+from pathlib import Path
 from datetime import datetime, timedelta
 from modules.sprint_calendar import get_sprint_calendar
 from modules.user_store import get_user_store, reset_user_store, VALID_ROLES
 from components.auth import require_admin, display_user_info
+
+# Path to itrack mapping config
+ITRACK_MAPPING_PATH = Path(__file__).parent.parent / '.streamlit' / 'itrack_mapping.toml'
 
 st.set_page_config(
     page_title="Admin Configuration",
@@ -23,7 +28,7 @@ require_admin("Admin Configuration")
 display_user_info()
 
 # Tabs for different configuration sections
-tab1, tab2 = st.tabs(["📅 Sprint Calendar", "👥 User Management"])
+tab1, tab2, tab3 = st.tabs(["📅 Sprint Calendar", "👥 User Management", "🧑‍💼 Team Members"])
 
 # ============================================================================
 # SPRINT CALENDAR MANAGEMENT
@@ -324,6 +329,175 @@ with tab2:
                             else:
                                 st.error(f"❌ {message}")
 
+# ============================================================================
+# TEAM MEMBERS MANAGEMENT
+# ============================================================================
+with tab3:
+    st.subheader("🧑‍💼 Team Members Management")
+    st.caption("Manage team members whose tasks appear in the dashboard")
+    
+    # Load current configuration
+    def load_itrack_config():
+        """Load the itrack mapping configuration."""
+        if ITRACK_MAPPING_PATH.exists():
+            with open(ITRACK_MAPPING_PATH, 'r') as f:
+                return toml.load(f)
+        return {}
+    
+    def save_itrack_config(config):
+        """Save the itrack mapping configuration."""
+        with open(ITRACK_MAPPING_PATH, 'w') as f:
+            toml.dump(config, f)
+    
+    config = load_itrack_config()
+    
+    # Get current team members and name mappings
+    team_members = config.get('team_members', {}).get('valid_team_members', [])
+    name_mapping = config.get('name_mapping', {})
+    
+    # Create DataFrame for display
+    team_data = []
+    for username in team_members:
+        display_name = name_mapping.get(username, '')
+        team_data.append({
+            'Username': username,
+            'Display Name': display_name
+        })
+    
+    team_df = pd.DataFrame(team_data) if team_data else pd.DataFrame(columns=['Username', 'Display Name'])
+    
+    # Current team members table
+    st.markdown("### Current Team Members")
+    st.caption(f"Total: {len(team_members)} team members")
+    
+    if team_df.empty:
+        st.info("No team members defined yet")
+    else:
+        st.dataframe(
+            team_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                'Username': st.column_config.TextColumn('Username (iTrack Account)', width='medium'),
+                'Display Name': st.column_config.TextColumn('Display Name', width='large')
+            }
+        )
+    
+    st.divider()
+    
+    # Add new team member
+    st.markdown("### ➕ Add New Team Member")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        new_member_username = st.text_input(
+            "Username (iTrack Account)", 
+            key="new_member_username",
+            help="The iTrack account username (e.g., 'jsmith')"
+        )
+    
+    with col2:
+        new_member_display = st.text_input(
+            "Display Name", 
+            key="new_member_display",
+            help="Full name to display in reports (e.g., 'John Smith')"
+        )
+    
+    if st.button("➕ Add Team Member", type="primary", key="add_member"):
+        if not new_member_username:
+            st.error("Username is required")
+        elif new_member_username in team_members:
+            st.error(f"Team member '{new_member_username}' already exists")
+        else:
+            # Add to team members list
+            team_members.append(new_member_username)
+            config['team_members']['valid_team_members'] = team_members
+            
+            # Add name mapping if provided
+            if new_member_display:
+                if 'name_mapping' not in config:
+                    config['name_mapping'] = {}
+                config['name_mapping'][new_member_username] = new_member_display
+            
+            # Save config
+            save_itrack_config(config)
+            st.success(f"✅ Team member '{new_member_username}' added successfully!")
+            st.rerun()
+    
+    st.divider()
+    
+    # Remove team member
+    st.markdown("### 🗑️ Remove Team Member")
+    
+    if team_members:
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            member_to_remove = st.selectbox(
+                "Select Team Member to Remove",
+                options=team_members,
+                format_func=lambda x: f"{x} ({name_mapping.get(x, 'No display name')})"
+            )
+        
+        with col2:
+            st.write("")  # Spacing
+            st.write("")  # Spacing
+            if st.button("🗑️ Remove", key="remove_member", type="secondary"):
+                # Remove from team members list
+                team_members.remove(member_to_remove)
+                config['team_members']['valid_team_members'] = team_members
+                
+                # Remove name mapping if exists
+                if member_to_remove in config.get('name_mapping', {}):
+                    del config['name_mapping'][member_to_remove]
+                
+                save_itrack_config(config)
+                st.success(f"✅ Team member '{member_to_remove}' removed!")
+                st.rerun()
+    else:
+        st.info("No team members to remove.")
+    
+    st.divider()
+    
+    # Bulk edit section
+    st.markdown("### ✏️ Edit Display Names")
+    st.caption("Edit display names in the table below")
+    
+    # Create editable dataframe
+    if not team_df.empty:
+        edited_df = st.data_editor(
+            team_df,
+            use_container_width=True,
+            hide_index=True,
+            disabled=['Username'],  # Username is read-only
+            column_config={
+                'Username': st.column_config.TextColumn('Username (iTrack Account)', width='medium'),
+                'Display Name': st.column_config.TextColumn('Display Name', width='large')
+            },
+            key="bulk_edit_members"
+        )
+        
+        if st.button("💾 Save All Changes", key="save_bulk", type="primary"):
+            # Update name mappings from edited dataframe
+            if 'name_mapping' not in config:
+                config['name_mapping'] = {}
+            
+            for _, row in edited_df.iterrows():
+                username = row['Username']
+                display_name = row['Display Name']
+                
+                if display_name:
+                    config['name_mapping'][username] = display_name
+                elif username in config['name_mapping']:
+                    del config['name_mapping'][username]
+            
+            save_itrack_config(config)
+            st.success("✅ All display names updated!")
+            st.rerun()
+    else:
+        st.info("No team members to edit.")
+
 # Footer
 st.divider()
-st.caption("💡 **Note:** Changes to sprint calendar and user accounts take effect immediately.")
+st.caption("💡 **Note:** Changes to sprint calendar, user accounts, and team members take effect immediately.")

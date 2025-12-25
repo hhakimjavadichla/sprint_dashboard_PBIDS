@@ -1,112 +1,61 @@
-# iTrack Column Mapping & Sprint Configuration
-# Maps iTrack export columns to internal sprint schema
-# Also defines sprint schedule and capacity settings
-
 [file_format]
-# Standard iTrack export format
 encoding = "utf-16"
 delimiter = "\t"
 description = "Standard iTrack table export format (December 2025)"
 
 [sprint_schedule]
-# Sprint cycle configuration
-# NOTE: Sprint dates are now defined in data/sprint_calendar.csv
-# These settings are used as defaults when adding new sprints
-
-# Duration in days (default: 14 for two-week sprints)
 duration_days = 14
-
-# Start day of week (0=Monday, 1=Tuesday, 2=Wednesday, 3=Thursday, 4=Friday, 5=Saturday, 6=Sunday)
-start_weekday = 3  # Thursday
-
-# End day of week (auto-calculated from duration)
-end_weekday = 2  # Wednesday
-
-# Cycle name for display
+start_weekday = 3
+end_weekday = 2
 cycle_name = "Thursday-to-Wednesday"
-
-# Sprint calendar file path (relative to data folder)
 calendar_file = "sprint_calendar.csv"
-
-# Auto-detect sprint from task assigned dates
 auto_detect_sprint = true
 
 [sprint_capacity]
-# Capacity settings per person per sprint
-max_hours = 52           # Maximum hours per person (65% of 80 available hours)
-warning_hours = 45       # Warning threshold (87% of max)
-capacity_percentage = 65 # Percentage of total time available for sprint work
+max_hours = 52
+warning_hours = 45
+capacity_percentage = 65
 
 [tat_thresholds]
-# Turn Around Time thresholds for priority escalation
-ir_days = 0.8   # Incident Request: escalate if open > 0.8 days
-sr_days = 22    # Service Request: escalate if open > 22 days
-warning_percent = 75  # Show warnings at 75% of TAT threshold
+ir_days = 0.8
+sr_days = 22
+warning_percent = 75
 
 [column_mapping]
-# Map iTrack column names to internal column names
-# Format: "iTrack Column Name" = "Internal Column Name"
-
-# Core identifiers
 "Ticket ID" = "Parent ID"
 "Task ID" = "Task"
-
-# Type and classification
 "Task Type Assigned" = "Task Type"
-
-# Ownership and assignment
-"Section" = "Team"                      # Lab section (Micro, CoreLab, etc.)
-"Task_Owner" = "Assignee"               # Person assigned to task
-"Task_Ownerteam" = "Task Owner Team"    # Task owner's organizational team
-"Ticket_Ownerteam" = "Ticket Owner Team"  # Ticket owner's organizational team
-"Ticket_Createdby" = "Ticket Creator"
-
-# Status tracking
-"Task_Status" = "Status"
-"Ticket_Status" = "Ticket Status"
-
-# Descriptive fields
-"Ticket_Subject" = "Subject"
-"Incidentnumber" = "Incident Number"
-"Profilefullname" = "Customer Name"
-
-# Date fields
-"Task_Assigned_DateTime" = "Task Assigned Date"
-"Task_Created_DateTime" = "Task Created Date"
-"Task_Resolveddatetime" = "Task Resolved Date"
-"Ticket_Createddatetime" = "Ticket Created Date"
-"Ticket_Resolveddatetime" = "Ticket Resolved Date"
-
-# Time tracking fields (added in v5)
-"Ticket_Totaltimespent" = "Ticket Total Time Spent"
-"Task_Minutesspent_From_Worklog" = "Task Minutes Spent"
+Section = "Team"
+Task_Owner = "Assignee"
+Task_Ownerteam = "Task Owner Team"
+Ticket_Ownerteam = "Ticket Owner Team"
+Ticket_Createdby = "Ticket Creator"
+Task_Status = "Status"
+Ticket_Status = "Ticket Status"
+Ticket_Subject = "Subject"
+Incidentnumber = "Incident Number"
+Profilefullname = "Customer Name"
+Task_Assigned_DateTime = "Task Assigned Date"
+Task_Created_DateTime = "Task Created Date"
+Task_Resolveddatetime = "Task Resolved Date"
+Ticket_Createddatetime = "Ticket Created Date"
+Ticket_Resolveddatetime = "Ticket Resolved Date"
+Ticket_Totaltimespent = "Ticket Total Time Spent"
+Task_Minutesspent_From_Worklog = "Task Minutes Spent"
 
 [default_values]
-# Default values for columns that might be missing or empty
-# Note: CustomerPriority and FinalPriority are dashboard-only fields (not from iTrack)
-Team = "PIBIDS"  # Team column (Section after first mapping)
+Team = "PIBIDS"
 
 [validation]
-# Required columns that must be present in iTrack export
-required_columns = [
-    "Ticket ID",
-    "Task ID",
-    "Task_Status",
-    "Task_Owner",
-    "Ticket_Subject",
-    "Task_Assigned_DateTime"
-]
+required_columns = [ "Ticket ID", "Task ID", "Task_Status", "Task_Owner", "Ticket_Subject", "Task_Assigned_DateTime",]
 
 [sprint_schema_mapping]
-# Maps internal columns to final sprint schema columns
-# This is the second stage of mapping: Internal → Sprint Schema
-
-"Task" = "TaskNum"
+Task = "TaskNum"
 "Parent ID" = "TicketNum"
-"Status" = "Status"
-"Assignee" = "AssignedTo"
-"Subject" = "Subject"
-"Team" = "Section"
+Status = "Status"
+Assignee = "AssignedTo"
+Subject = "Subject"
+Team = "Section"
 "Task Assigned Date" = "TaskAssignedDt"
 "Task Created Date" = "TaskCreatedDt"
 "Task Resolved Date" = "TaskResolvedDt"
@@ -122,82 +71,24 @@ required_columns = [
 "Customer Name" = "CustomerName"
 
 [sprint_columns]
-# Defines the order and list of columns in the final sprint CSV
-# Columns will appear in this exact order in exports and displays
-column_order = [
-    "SprintNumber",
-    "SprintName",
-    "SprintStartDt",
-    "SprintEndDt",
-    "TaskNum",
-    "TicketNum",
-    "TicketType",
-    "Section",
-    "Status",
-    "AssignedTo",
-    "CustomerName",
-    "Subject",
-    "CustomerPriority",
-    "DaysOpen",
-    "TaskAssignedDt",
-    "TaskCreatedDt",
-    "TaskResolvedDt",
-    "TicketCreatedDt",
-    "TicketResolvedDt",
-    "HoursEstimated",
-    "DependencyOn",
-    "DependenciesLead",
-    "DependencySecured",
-    "Comments",
-    "TicketTotalTimeSpent",
-    "TaskMinutesSpent"
-]
+column_order = [ "SprintNumber", "SprintName", "SprintStartDt", "SprintEndDt", "TaskNum", "TicketNum", "TicketType", "Section", "Status", "AssignedTo", "CustomerName", "Subject", "CustomerPriority", "DaysOpen", "TaskAssignedDt", "TaskCreatedDt", "TaskResolvedDt", "TicketCreatedDt", "TicketResolvedDt", "HoursEstimated", "DependencyOn", "DependenciesLead", "DependencySecured", "Comments", "TicketTotalTimeSpent", "TaskMinutesSpent",]
 
 [team_members]
-# List of valid team member account names (usernames)
-# Tasks assigned to people NOT in this list will be filtered out from all views
-# Add or remove usernames as team members change
-valid_team_members = [
-    "iibarraflores",
-    "clee",
-    "mkusumo",
-    "mjimeno",
-    "fsharifi",
-    "creyes",
-    "jskinta",
-    "ansharma",
-    "dxu",
-    "dmaglinte",
-    "hhakimjavadi",
-    "rrene",
-    "yapan",
-    "dbuckley",
-    "amarkowitz",
-]
+valid_team_members = [ "iibarraflores", "clee", "mkusumo", "mjimeno", "fsharifi", "creyes", "jskinta", "ansharma", "dxu", "dmaglinte", "hhakimjavadi", "rrene", "yapan", "dbuckley", "amarkowitz",]
 
 [name_mapping]
-# Maps iTrack account names (usernames) to display names
-# Format: "account_name" = "Display Name"
-# Add entries here to show real names instead of account names in the dashboard
-
-# Example entries (update with actual team members):
-# "mjimeno" = "Maria Jimeno"
-# "jsmith" = "John Smith"
-# "agarcia" = "Ana Garcia"
-
-# Add your team members below:
-iibarraflores = "Irvin Ibarraflores"
-clee = "Catherian Lee"
-mkusumo = "Marietta Kusumo"
-mjimeno = "Jimeno Marilou"
-fsharifi = "Sharifi Fatemeh"
-creyes = "Chavez Claudia"
-jskinta = "Skinta John"
-ansharma = "Sharma Ankit"
-dxu = "Xu Dong"
-dmaglinte = "Maglinte Dennis"
-hhakimjavadi = "HesamHakimjavadi "
-rrene = "Rene Ryan"
-yapan = "Pan Yachen"
-dbuckley = "Buckley David"
-amarkowitz = "Markowitz Alex"
+iibarraflores = "Ibarraflores, Irvin"
+clee = "Lee, Catherian"
+mkusumo = "Kusumo, Marietta"
+mjimeno = "Jimeno, Marilou"
+fsharifi = "Sharifi, Fatemeh"
+creyes = "Chavez, Claudia"
+jskinta = "Skinta, John"
+ansharma = "Sharma, Ankit"
+dxu = "Xu, Dong"
+dmaglinte = "Maglinte, Dennis"
+hhakimjavadi = "Hakimjavadi, Hesam"
+rrene = "Rene, Ryan"
+yapan = "Pan, Yachen"
+dbuckley = "Buckley, David"
+amarkowitz = "Markowitz, Alex"
