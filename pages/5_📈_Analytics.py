@@ -48,6 +48,12 @@ if user_role != 'Admin' and user_section:
     sprint_df = sprint_df[sprint_df['Section'] == user_section]
     st.info(f"👁️ Viewing analytics for: **{user_section}**")
 
+# Check if data is available after filtering
+if sprint_df.empty:
+    st.warning("📭 No tasks available for analytics in your section.")
+    st.caption("Tasks may not be assigned to your section yet, or you may need to check with an administrator.")
+    st.stop()
+
 # Sprint header
 sprint_num = sprint_df['SprintNumber'].iloc[0]
 sprint_name = sprint_df.get('SprintName', pd.Series([f"Sprint {sprint_num}"])).iloc[0]

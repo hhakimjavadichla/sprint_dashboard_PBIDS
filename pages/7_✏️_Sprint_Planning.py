@@ -11,8 +11,9 @@ from modules.task_store import get_task_store, VALID_STATUSES
 from modules.sprint_calendar import get_sprint_calendar
 from modules.capacity_validator import validate_capacity, get_capacity_dataframe
 from components.auth import require_admin, display_user_info
-from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, TASK_ORIGIN_CELL_STYLE, COLUMN_WIDTHS, get_column_width, COLUMN_DESCRIPTIONS, fullscreen_toggle, get_grid_height
+from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, TASK_ORIGIN_CELL_STYLE, COLUMN_WIDTHS, get_column_width, COLUMN_DESCRIPTIONS, fullscreen_toggle, get_grid_height, display_column_help
 from utils.constants import VALID_SECTIONS
+from utils.exporters import export_to_excel
 
 st.set_page_config(
     page_title="Sprint Planning",
@@ -29,6 +30,33 @@ st.caption("_PBIDS Team_")
 # Require admin access
 require_admin("Sprint Planning")
 display_user_info()
+
+# Instructions at the top
+with st.expander("ℹ️ How to Use This Page", expanded=False):
+    st.markdown("""
+    ### Planning Workflow
+    
+    1. **Edit cells directly** in the table below (double-click to edit)
+    2. **All fields are editable by admin**
+    3. **Click "Save Changes"** button to persist your edits
+    4. **Monitor capacity** - warnings appear if anyone exceeds 52 hours
+    
+    ### Field Types
+    - **Dropdown fields:** SprintNumber, CustomerPriority (0-5), DependencySecured, Status, TicketType, Section
+    - **Numeric fields:** DaysOpen, HoursEstimated, HoursSpent
+    - **Free text fields:** All other fields
+    
+    ### Pre-populated Fields (from iTrack or calculated)
+    - **DaysOpen** - Days since ticket creation (calculated)
+    - **HoursSpent** - From iTrack worklog (TaskMinutesSpent / 60)
+    - **TicketType, Section, CustomerName, Status, AssignedTo, Subject** - From iTrack upload
+    - **TicketNum, TaskNum, TicketCreatedDt, TaskCreatedDt** - From iTrack upload
+    
+    ### Tips
+    - Changing SprintNumber moves the task to that sprint on save
+    - Use filters to focus on specific sections or assignees
+    - Capacity validation happens automatically
+    """)
 
 # Load modules
 task_store = get_task_store()
@@ -87,56 +115,14 @@ if not sprint_options:
     st.error("No current or future sprints available for planning.")
     st.stop()
 
-col1, col2 = st.columns([3, 1])
-
-with col1:
-    selected_label = st.selectbox(
-        "Select Sprint to Plan",
-        options=[opt[1] for opt in sprint_options],
-        index=default_idx
-    )
-
+# Sprint selector
+selected_label = st.selectbox(
+    "Select Sprint to Plan",
+    options=[opt[1] for opt in sprint_options],
+    index=default_idx
+)
 selected_sprint_num = sprint_options[[opt[1] for opt in sprint_options].index(selected_label)][0]
 selected_sprint = calendar.get_sprint_by_number(selected_sprint_num)
-
-with col2:
-    is_current = current_sprint and selected_sprint_num == current_sprint['SprintNumber']
-    if is_current:
-        st.success("Current Sprint")
-    else:
-        st.info("Future Sprint")
-
-# Sprint info
-st.markdown(f"**{selected_sprint['SprintName']}** — {selected_sprint['SprintStartDt'].strftime('%b %d')} to {selected_sprint['SprintEndDt'].strftime('%b %d, %Y')}")
-
-# Instructions
-with st.expander("ℹ️ How to Use This Page", expanded=False):
-    st.markdown("""
-    ### Planning Workflow
-    
-    1. **Edit cells directly** in the table below (double-click to edit)
-    2. **All fields are editable by admin**
-    3. **Click "Save Changes"** button to persist your edits
-    4. **Monitor capacity** - warnings appear if anyone exceeds 52 hours
-    
-    ### Field Types
-    - **Dropdown fields:** SprintNumber, CustomerPriority (0-5), DependencySecured, Status, TicketType, Section
-    - **Numeric fields:** DaysOpen, HoursEstimated, HoursSpent
-    - **Free text fields:** All other fields
-    
-    ### Pre-populated Fields (from iTrack or calculated)
-    - **DaysOpen** - Days since ticket creation (calculated)
-    - **HoursSpent** - From iTrack worklog (TaskMinutesSpent / 60)
-    - **TicketType, Section, CustomerName, Status, AssignedTo, Subject** - From iTrack upload
-    - **TicketNum, TaskNum, TicketCreatedDt, TaskCreatedDt** - From iTrack upload
-    
-    ### Tips
-    - Changing SprintNumber moves the task to that sprint on save
-    - Use filters to focus on specific sections or assignees
-    - Capacity validation happens automatically
-    """)
-
-st.divider()
 
 # Get sprint tasks - ONLY open tasks (exclude completed for planning)
 sprint_tasks = task_store.get_sprint_tasks(selected_sprint_num)
@@ -193,23 +179,63 @@ if show_unestimated:
 
 st.caption(f"Showing {len(filtered_tasks)} of {len(sprint_tasks)} tasks")
 
-# Capacity summary at top
-capacity_info = validate_capacity(sprint_tasks)
-
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.metric("Total Estimated Hours", f"{capacity_info['total_hours']:.1f}")
-with col2:
-    st.metric("🔴 Overloaded", len(capacity_info['overloaded']))
-with col3:
-    st.metric("🟡 Near Capacity", len(capacity_info['warnings']))
-with col4:
-    st.metric("🟢 OK", len(capacity_info['per_person']) - len(capacity_info['overloaded']) - len(capacity_info['warnings']))
-
-if capacity_info['overloaded']:
-    st.error(f"⚠️ **Capacity Alert:** {len(capacity_info['overloaded'])} people are overloaded (>52 hours)")
-    overload_names = ", ".join(capacity_info['overloaded'])
-    st.caption(f"Overloaded: {overload_names}")
+# Summary metrics by ticket type (similar to Work Backlogs)
+if not sprint_tasks.empty and 'TicketType' in sprint_tasks.columns:
+    # Count tasks by type
+    task_counts = sprint_tasks['TicketType'].value_counts().to_dict()
+    
+    # Count unique tickets by type
+    ticket_counts = {}
+    if 'TicketNum' in sprint_tasks.columns:
+        for ticket_type in ['SR', 'PR', 'IR', 'NC', 'AD']:
+            ticket_counts[ticket_type] = sprint_tasks[sprint_tasks['TicketType'] == ticket_type]['TicketNum'].nunique()
+        total_tickets = sprint_tasks['TicketNum'].nunique()
+    else:
+        ticket_counts = task_counts.copy()
+        total_tickets = len(sprint_tasks)
+    
+    # Ticket type labels
+    type_labels = {
+        'SR': 'SR (Service Request)',
+        'PR': 'PR (Problem)',
+        'IR': 'IR (Incident)',
+        'NC': 'NC (New Change)',
+        'AD': 'AD (Admin)'
+    }
+    
+    # Row 1: Tasks by category
+    st.caption("**Tasks** (a ticket may have multiple tasks)")
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    
+    with col1:
+        st.metric("SR", task_counts.get('SR', 0), help=type_labels['SR'])
+    with col2:
+        st.metric("PR", task_counts.get('PR', 0), help=type_labels['PR'])
+    with col3:
+        st.metric("IR", task_counts.get('IR', 0), help=type_labels['IR'])
+    with col4:
+        st.metric("NC", task_counts.get('NC', 0), help=type_labels['NC'])
+    with col5:
+        st.metric("AD", task_counts.get('AD', 0), help=type_labels['AD'])
+    with col6:
+        st.metric("Total Tasks", len(sprint_tasks))
+    
+    # Row 2: Tickets by category
+    st.caption("**Tickets** (unique ticket numbers)")
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    
+    with col1:
+        st.metric("SR", ticket_counts.get('SR', 0), help=type_labels['SR'])
+    with col2:
+        st.metric("PR", ticket_counts.get('PR', 0), help=type_labels['PR'])
+    with col3:
+        st.metric("IR", ticket_counts.get('IR', 0), help=type_labels['IR'])
+    with col4:
+        st.metric("NC", ticket_counts.get('NC', 0), help=type_labels['NC'])
+    with col5:
+        st.metric("AD", ticket_counts.get('AD', 0), help=type_labels['AD'])
+    with col6:
+        st.metric("Total Tickets", total_tickets)
 
 st.divider()
 
@@ -456,13 +482,16 @@ if not filtered_tasks.empty:
     grid_options = gb.build()
     grid_options['getRowStyle'] = row_style_jscode
     
-    st.markdown("### 📝 Edit Planning Fields")
-    col_info, col_expand = st.columns([4, 1])
+    col_info, col_help, col_expand = st.columns([3, 1, 1])
     with col_info:
         st.caption("✏️ = Editable column (double-click to edit). Changes are saved when you click 'Save Changes' below.")
-        st.caption("**Priority values:** NotAssigned | 0=No longer needed | 1=Lowest | 2=Low | 3=Medium | 4=High | 5=Highest")
+    with col_help:
+        pass  # Column help expander will be below
     with col_expand:
         is_fullscreen = fullscreen_toggle("planning_table")
+    
+    # Column descriptions help
+    display_column_help(title="❓ Column Descriptions")
     
     # Display editable grid
     grid_response = AgGrid(
@@ -480,6 +509,30 @@ if not filtered_tasks.empty:
     
     # Get edited data
     edited_df = pd.DataFrame(grid_response['data'])
+    
+    # Export section - exports current filtered view
+    col_export1, col_export2 = st.columns([2, 6])
+    
+    with col_export1:
+        # Export current filtered view
+        export_df = edited_df.copy()
+        # Remove internal columns from export
+        export_cols = [c for c in export_df.columns if not c.startswith('_')]
+        export_df = export_df[export_cols]
+        
+        excel_data = export_to_excel(export_df, sheet_name="Sprint Planning")
+        filename = f"sprint_planning_{selected_sprint_num}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+        
+        st.download_button(
+            label=f"📥 Export to Excel ({len(export_df)} tasks)",
+            data=excel_data,
+            file_name=filename,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            help="Export current filtered view to Excel"
+        )
+    
+    with col_export2:
+        st.caption("💡 Apply filters in sidebar to narrow down data before exporting.")
     
     st.divider()
     

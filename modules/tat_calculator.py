@@ -137,6 +137,8 @@ def calculate_tat_metrics(df: pd.DataFrame) -> dict:
         'sr_at_risk': 0,
         'total_exceeded': 0,
         'total_at_risk': 0,
+        'ir_compliance_rate': 100.0,
+        'sr_compliance_rate': 100.0,
     }
     
     if df.empty:

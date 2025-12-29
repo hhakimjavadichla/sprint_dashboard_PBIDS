@@ -11,7 +11,7 @@ from modules.task_store import get_task_store, CLOSED_STATUSES
 from modules.section_filter import filter_by_section, get_section_summary
 from components.auth import require_auth, display_user_info, get_user_role, get_user_section
 from utils.exporters import export_to_csv, export_to_excel
-from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, fullscreen_toggle, get_grid_height
+from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, fullscreen_toggle, get_grid_height, display_column_help
 
 st.set_page_config(
     page_title="Section View (Prototype)",
@@ -131,9 +131,11 @@ st.markdown("### Tasks")
 col_info, col_expand = st.columns([4, 1])
 with col_info:
     st.caption("💡 You can edit **Priority** for open tasks. Double-click the Priority cell to change it.")
-    st.caption("**Priority values:** NotAssigned | 0=No longer needed | 1=Lowest | 2=Low | 3=Medium | 4=High | 5=Highest")
 with col_expand:
     is_fullscreen = fullscreen_toggle("section_view")
+
+# Column descriptions help
+display_column_help(title="❓ Column Descriptions")
 
 if not filtered_df.empty:
     # Use display names if available
@@ -210,7 +212,7 @@ if not filtered_df.empty:
     # Save button for priority changes
     st.divider()
     
-    col_save, col_info, col_export1, col_export2 = st.columns([1, 2, 1, 1])
+    col_save, col_info = st.columns([1, 3])
     
     with col_save:
         if st.button("💾 Save Priority Changes", type="primary", use_container_width=True):
@@ -251,25 +253,31 @@ if not filtered_df.empty:
     with col_info:
         st.caption("Priority: 0=Not needed, 1=Lowest, 5=Highest. Only open tasks can be edited.")
     
+    # Export section - exports current filtered view
+    col_export1, col_export2 = st.columns([2, 6])
+    
     with col_export1:
-        csv_data = export_to_csv(filtered_df)
+        # Export current filtered view
+        export_df = edited_df.copy()
+        # Remove internal columns from export
+        export_cols = [c for c in export_df.columns if not c.startswith('_')]
+        export_df = export_df[export_cols]
+        
+        from datetime import datetime
+        excel_data = export_to_excel(export_df, sheet_name="Section View")
+        section_name = user_section.replace(' ', '_') if user_section else "all"
+        filename = f"section_view_{section_name}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+        
         st.download_button(
-            "📥 CSV",
-            csv_data,
-            f"section_{user_section}_tasks.csv" if user_section else "tasks.csv",
-            "text/csv",
-            use_container_width=True
+            label=f"📥 Export to Excel ({len(export_df)} tasks)",
+            data=excel_data,
+            file_name=filename,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            help="Export current filtered view to Excel"
         )
     
     with col_export2:
-        excel_data = export_to_excel(filtered_df)
-        st.download_button(
-            "📥 Excel",
-            excel_data,
-            f"section_{user_section}_tasks.xlsx" if user_section else "tasks.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
+        st.caption("💡 Apply filters above to narrow down data before exporting.")
 
 else:
     st.info("No tasks match the current filters")

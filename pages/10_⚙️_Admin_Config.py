@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from modules.sprint_calendar import get_sprint_calendar
 from modules.user_store import get_user_store, reset_user_store, VALID_ROLES
 from components.auth import require_admin, display_user_info
+from utils.constants import VALID_SECTIONS
 
 # Path to itrack mapping config
 ITRACK_MAPPING_PATH = Path(__file__).parent.parent / '.streamlit' / 'itrack_mapping.toml'
@@ -217,13 +218,14 @@ with tab2:
         new_display_name = st.text_input("Display Name", key="new_display_name")
         new_role = st.selectbox("Role", options=VALID_ROLES, key="new_role")
         
-        # Get existing sections for suggestions
-        existing_sections = user_store.get_sections()
-        new_section = st.text_input(
-            "Section (for Section Users)", 
-            key="new_section",
-            help=f"Existing sections: {', '.join(existing_sections) if existing_sections else 'None'}"
+        # Multi-select dropdown for sections
+        new_sections = st.multiselect(
+            "Sections (for Section Users)", 
+            options=VALID_SECTIONS,
+            key="new_sections",
+            help="Select one or more sections this user can monitor and edit"
         )
+        new_section = ','.join(new_sections) if new_sections else ''
     
     if st.button("➕ Add User", type="primary"):
         if not new_username:
@@ -232,8 +234,8 @@ with tab2:
             st.error("Password is required")
         elif new_password != new_password_confirm:
             st.error("Passwords do not match")
-        elif new_role == 'Section User' and not new_section:
-            st.error("Section is required for Section Users")
+        elif new_role == 'Section User' and not new_sections:
+            st.error("At least one section is required for Section Users")
         else:
             success, message = user_store.add_user(
                 username=new_username,
@@ -288,11 +290,19 @@ with tab2:
                         index=VALID_ROLES.index(user_data['role']) if user_data['role'] in VALID_ROLES else 0,
                         key="edit_role"
                     )
-                    edit_section = st.text_input(
-                        "Section", 
-                        value=user_data['section'] or '', 
-                        key="edit_section"
+                    # Parse existing sections (comma-separated)
+                    current_sections = [s.strip() for s in (user_data['section'] or '').split(',') if s.strip()]
+                    # Filter to only include valid sections
+                    current_sections = [s for s in current_sections if s in VALID_SECTIONS]
+                    
+                    edit_sections = st.multiselect(
+                        "Sections", 
+                        options=VALID_SECTIONS,
+                        default=current_sections,
+                        key="edit_sections",
+                        help="Select one or more sections this user can monitor and edit"
                     )
+                    edit_section = ','.join(edit_sections) if edit_sections else ''
                 
                 col1, col2 = st.columns(2)
                 

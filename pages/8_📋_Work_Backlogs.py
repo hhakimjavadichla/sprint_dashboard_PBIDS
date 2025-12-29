@@ -6,10 +6,12 @@ SprintsAssigned column tracks all sprint assignments for each task.
 import streamlit as st
 import pandas as pd
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, JsCode
+from datetime import datetime
 from modules.task_store import get_task_store
 from modules.sprint_calendar import get_sprint_calendar
 from components.auth import require_admin, display_user_info
-from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, COLUMN_DESCRIPTIONS, fullscreen_toggle, get_grid_height
+from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, COLUMN_DESCRIPTIONS, fullscreen_toggle, get_grid_height, display_column_help
+from utils.exporters import export_to_excel
 
 st.set_page_config(
     page_title="Work Backlogs",
@@ -55,7 +57,17 @@ All **open tasks** appear here. As admin, you can:
 # Summary metrics by ticket type
 if not backlog_tasks.empty and 'TicketType' in backlog_tasks.columns:
     # Count tasks by type
-    type_counts = backlog_tasks['TicketType'].value_counts().to_dict()
+    task_counts = backlog_tasks['TicketType'].value_counts().to_dict()
+    
+    # Count unique tickets by type
+    ticket_counts = {}
+    if 'TicketNum' in backlog_tasks.columns:
+        for ticket_type in ['SR', 'PR', 'IR', 'NC', 'AD']:
+            ticket_counts[ticket_type] = backlog_tasks[backlog_tasks['TicketType'] == ticket_type]['TicketNum'].nunique()
+        total_tickets = backlog_tasks['TicketNum'].nunique()
+    else:
+        ticket_counts = task_counts.copy()
+        total_tickets = len(backlog_tasks)
     
     # Ticket type labels
     type_labels = {
@@ -66,25 +78,39 @@ if not backlog_tasks.empty and 'TicketType' in backlog_tasks.columns:
         'AD': 'AD (Admin)'
     }
     
+    # Row 1: Tasks by category
+    st.caption("**Tasks** (a ticket may have multiple tasks)")
     col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     with col1:
+        st.metric("SR", task_counts.get('SR', 0), help=type_labels['SR'])
+    with col2:
+        st.metric("PR", task_counts.get('PR', 0), help=type_labels['PR'])
+    with col3:
+        st.metric("IR", task_counts.get('IR', 0), help=type_labels['IR'])
+    with col4:
+        st.metric("NC", task_counts.get('NC', 0), help=type_labels['NC'])
+    with col5:
+        st.metric("AD", task_counts.get('AD', 0), help=type_labels['AD'])
+    with col6:
         st.metric("Total Tasks", len(backlog_tasks))
     
+    # Row 2: Tickets by category
+    st.caption("**Tickets** (unique ticket numbers)")
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    
+    with col1:
+        st.metric("SR", ticket_counts.get('SR', 0), help=type_labels['SR'])
     with col2:
-        st.metric("SR", type_counts.get('SR', 0), help=type_labels['SR'])
-    
+        st.metric("PR", ticket_counts.get('PR', 0), help=type_labels['PR'])
     with col3:
-        st.metric("PR", type_counts.get('PR', 0), help=type_labels['PR'])
-    
+        st.metric("IR", ticket_counts.get('IR', 0), help=type_labels['IR'])
     with col4:
-        st.metric("IR", type_counts.get('IR', 0), help=type_labels['IR'])
-    
+        st.metric("NC", ticket_counts.get('NC', 0), help=type_labels['NC'])
     with col5:
-        st.metric("NC", type_counts.get('NC', 0), help=type_labels['NC'])
-    
+        st.metric("AD", ticket_counts.get('AD', 0), help=type_labels['AD'])
     with col6:
-        st.metric("AD", type_counts.get('AD', 0), help=type_labels['AD'])
+        st.metric("Total Tickets", total_tickets)
 
 st.divider()
 
@@ -94,7 +120,6 @@ if backlog_tasks.empty:
 else:
     # Calculate DaysCreated from TicketCreatedDt
     if 'TicketCreatedDt' in backlog_tasks.columns:
-        from datetime import datetime
         backlog_tasks['DaysCreated'] = (datetime.now() - pd.to_datetime(backlog_tasks['TicketCreatedDt'], errors='coerce')).dt.days
     
     # Use all backlog tasks (AgGrid has built-in filtering)
@@ -298,6 +323,9 @@ else:
     with col_expand:
         is_fullscreen = fullscreen_toggle("backlog_table")
     
+    # Column descriptions help
+    display_column_help(title="❓ Column Descriptions")
+    
     grid_response = AgGrid(
         grid_df,
         gridOptions=grid_options,
@@ -316,6 +344,30 @@ else:
         selected_df = pd.DataFrame(selected_rows) if selected_rows else pd.DataFrame()
     else:
         selected_df = selected_rows if selected_rows is not None else pd.DataFrame()
+    
+    # Export section - exports current filtered view
+    col_export1, col_export2 = st.columns([2, 6])
+    
+    with col_export1:
+        # Export current filtered view
+        export_df = grid_df.copy()
+        # Remove internal columns from export
+        export_cols = [c for c in export_df.columns if not c.startswith('_')]
+        export_df = export_df[export_cols]
+        
+        excel_data = export_to_excel(export_df, sheet_name="Work Backlogs")
+        filename = f"work_backlogs_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+        
+        st.download_button(
+            label=f"📥 Export to Excel ({len(export_df)} tasks)",
+            data=excel_data,
+            file_name=filename,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            help="Export current filtered view to Excel"
+        )
+    
+    with col_export2:
+        st.caption("💡 Apply filters above to narrow down data before exporting.")
     
     st.divider()
     

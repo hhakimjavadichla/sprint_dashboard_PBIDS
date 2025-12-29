@@ -494,3 +494,64 @@ def get_column_width(column_name: str, header_name: str = None) -> int:
     # Calculate based on header name
     display_name = header_name or column_name
     return calc_column_width(display_name)
+
+
+def display_column_help(columns: list = None, title: str = "📖 Column Descriptions"):
+    """
+    Display an expandable section with column descriptions.
+    
+    Args:
+        columns: Optional list of column names to show. If None, shows all available descriptions.
+        title: Title for the expander
+    """
+    with st.expander(title, expanded=False):
+        if columns:
+            # Show only specified columns
+            descriptions = {col: COLUMN_DESCRIPTIONS.get(col, '') for col in columns if col in COLUMN_DESCRIPTIONS}
+        else:
+            descriptions = COLUMN_DESCRIPTIONS
+        
+        if not descriptions:
+            st.info("No column descriptions available.")
+            return
+        
+        # Group columns by category
+        categories = {
+            "Sprint Fields": ["SprintNumber", "SprintName", "SprintStartDt", "SprintEndDt", "SprintsAssigned"],
+            "Task Identifiers": ["TaskOrigin", "TicketNum", "TaskNum", "TaskCount", "UniqueTaskId"],
+            "Task Info": ["TicketType", "Section", "CustomerName", "Status", "AssignedTo", "Subject"],
+            "Dates": ["TicketCreatedDt", "TaskCreatedDt", "TaskAssignedDt", "StatusUpdateDt"],
+            "Metrics": ["DaysOpen", "DaysCreated"],
+            "Planning Fields": ["CustomerPriority", "FinalPriority", "GoalType", "DependencyOn", "DependenciesLead", "DependencySecured", "Comments", "HoursEstimated"],
+            "Hours": ["TaskHoursSpent", "TicketHoursSpent"],
+            "Other": ["CompletedInSprint", "OriginalSprintNumber", "IsCarryover"]
+        }
+        
+        # Display in columns for better layout
+        col1, col2 = st.columns(2)
+        
+        displayed = set()
+        col_idx = 0
+        
+        for category, cat_columns in categories.items():
+            # Filter to only columns that exist in descriptions
+            cat_items = [(col, descriptions[col]) for col in cat_columns if col in descriptions]
+            if not cat_items:
+                continue
+            
+            target_col = col1 if col_idx % 2 == 0 else col2
+            col_idx += 1
+            
+            with target_col:
+                st.markdown(f"**{category}**")
+                for col_name, desc in cat_items:
+                    st.markdown(f"- **{col_name}**: {desc}")
+                    displayed.add(col_name)
+                st.write("")  # spacing
+        
+        # Show any remaining columns not in categories
+        remaining = [(k, v) for k, v in descriptions.items() if k not in displayed]
+        if remaining:
+            st.markdown("**Other Fields**")
+            for col_name, desc in remaining:
+                st.markdown(f"- **{col_name}**: {desc}")
