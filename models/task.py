@@ -72,6 +72,8 @@ class Task(BaseModel):
                 return "SR"
             elif 'LAB-PR' in subject_upper or '-PR:' in subject_upper:
                 return "PR"
+            elif 'LAB-AD' in subject_upper or '-AD:' in subject_upper:
+                return "AD"
         
         return v if v else "NC"
     

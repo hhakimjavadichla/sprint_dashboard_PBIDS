@@ -10,11 +10,11 @@ from datetime import datetime
 from modules.task_store import get_task_store
 from modules.sprint_calendar import get_sprint_calendar
 from components.auth import require_admin, display_user_info
-from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, COLUMN_DESCRIPTIONS, fullscreen_toggle, get_grid_height, display_column_help
+from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, COLUMN_DESCRIPTIONS, display_column_help
 from utils.exporters import export_to_excel
 
 st.set_page_config(
-    page_title="Work Backlogs",
+    page_title="Work Backlogs & Sprint Assignment",
     page_icon="📋",
     layout="wide"
 )
@@ -29,7 +29,7 @@ if not require_admin():
 # Display user info
 display_user_info()
 
-st.title("📋 Work Backlogs")
+st.title("📋 Work Backlogs & Sprint Assignment")
 
 # Get task store and sprint calendar
 task_store = get_task_store()
@@ -46,13 +46,15 @@ current_sprint_num = current_sprint['SprintNumber'] if current_sprint else 1
 # Filter to only current and future sprints for assignment
 future_sprints = all_sprints[all_sprints['SprintNumber'] >= current_sprint_num].copy()
 
-st.markdown("""
-All **open tasks** appear here. As admin, you can:
-- Assign tasks to **current or future sprints**
-- Tasks can be assigned to multiple sprints over time
-- Track sprint assignment history in the **Sprints Assigned** column
-- Completed tasks are automatically moved to the **Completed Tasks** page
-""")
+with st.expander("ℹ️ How to Use This Page", expanded=False):
+    st.markdown("""
+    All **open tasks** appear here. As admin, you can:
+    - **Click checkbox** to select tasks for sprint assignment
+    - Assign tasks to **current or future sprints**
+    - Tasks can be assigned to multiple sprints over time
+    - Track sprint assignment history in the **Sprints Assigned** column
+    - Completed tasks are automatically moved to the **Completed Tasks** page
+    """)
 
 # Summary metrics by ticket type
 if not backlog_tasks.empty and 'TicketType' in backlog_tasks.columns:
@@ -73,44 +75,42 @@ if not backlog_tasks.empty and 'TicketType' in backlog_tasks.columns:
     type_labels = {
         'SR': 'SR (Service Request)',
         'PR': 'PR (Problem)',
-        'IR': 'IR (Incident)',
-        'NC': 'NC (New Change)',
-        'AD': 'AD (Admin)'
+        'IR': 'IR (Incident Request)',
+        'NC': 'NC (Non-classified IS Requests)',
+        'AD': 'AD (Admin Request)'
     }
     
-    # Row 1: Tasks by category
-    st.caption("**Tasks** (a ticket may have multiple tasks)")
+    # Row 1: Tickets by category
     col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     with col1:
-        st.metric("SR", task_counts.get('SR', 0), help=type_labels['SR'])
+        st.metric("Total Current Tickets", total_tickets)
     with col2:
-        st.metric("PR", task_counts.get('PR', 0), help=type_labels['PR'])
-    with col3:
-        st.metric("IR", task_counts.get('IR', 0), help=type_labels['IR'])
-    with col4:
-        st.metric("NC", task_counts.get('NC', 0), help=type_labels['NC'])
-    with col5:
-        st.metric("AD", task_counts.get('AD', 0), help=type_labels['AD'])
-    with col6:
-        st.metric("Total Tasks", len(backlog_tasks))
-    
-    # Row 2: Tickets by category
-    st.caption("**Tickets** (unique ticket numbers)")
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-    
-    with col1:
         st.metric("SR", ticket_counts.get('SR', 0), help=type_labels['SR'])
-    with col2:
-        st.metric("PR", ticket_counts.get('PR', 0), help=type_labels['PR'])
     with col3:
-        st.metric("IR", ticket_counts.get('IR', 0), help=type_labels['IR'])
+        st.metric("PR", ticket_counts.get('PR', 0), help=type_labels['PR'])
     with col4:
-        st.metric("NC", ticket_counts.get('NC', 0), help=type_labels['NC'])
+        st.metric("IR", ticket_counts.get('IR', 0), help=type_labels['IR'])
     with col5:
-        st.metric("AD", ticket_counts.get('AD', 0), help=type_labels['AD'])
+        st.metric("NC", ticket_counts.get('NC', 0), help=type_labels['NC'])
     with col6:
-        st.metric("Total Tickets", total_tickets)
+        st.metric("AD", ticket_counts.get('AD', 0), help=type_labels['AD'])
+    
+    # Row 2: Tasks by category
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    
+    with col1:
+        st.metric("Total Current Tasks", len(backlog_tasks))
+    with col2:
+        st.metric("SR", task_counts.get('SR', 0), help=type_labels['SR'])
+    with col3:
+        st.metric("PR", task_counts.get('PR', 0), help=type_labels['PR'])
+    with col4:
+        st.metric("IR", task_counts.get('IR', 0), help=type_labels['IR'])
+    with col5:
+        st.metric("NC", task_counts.get('NC', 0), help=type_labels['NC'])
+    with col6:
+        st.metric("AD", task_counts.get('AD', 0), help=type_labels['AD'])
 
 st.divider()
 
@@ -281,9 +281,9 @@ else:
                         headerTooltip=COLUMN_DESCRIPTIONS.get('FinalPriority', ''))
     gb.configure_column('GoalType', header_name='GoalType', width=COLUMN_WIDTHS['GoalType'],
                         headerTooltip=COLUMN_DESCRIPTIONS.get('GoalType', ''))
-    gb.configure_column('DependencyOn', header_name='DependencyOn', width=COLUMN_WIDTHS['DependencyOn'],
+    gb.configure_column('DependencyOn', header_name='Dependency', width=COLUMN_WIDTHS['DependencyOn'],
                         headerTooltip=COLUMN_DESCRIPTIONS.get('DependencyOn', ''))
-    gb.configure_column('DependenciesLead', header_name='DependenciesLead', width=COLUMN_WIDTHS['DependenciesLead'],
+    gb.configure_column('DependenciesLead', header_name='DependencyLead(s)', width=COLUMN_WIDTHS['DependenciesLead'],
                         headerTooltip=COLUMN_DESCRIPTIONS.get('DependenciesLead', ''), tooltipField='DependenciesLead')
     gb.configure_column('DependencySecured', header_name='DependencySecured', width=COLUMN_WIDTHS['DependencySecured'],
                         headerTooltip=COLUMN_DESCRIPTIONS.get('DependencySecured', ''))
@@ -316,12 +316,6 @@ else:
     grid_options = gb.build()
     grid_options['getRowStyle'] = row_style_jscode
     
-    st.markdown("### 📋 Select Tasks to Assign")
-    col_title, col_expand = st.columns([4, 1])
-    with col_title:
-        st.caption("Click checkbox to select tasks. Tasks can be assigned to multiple sprints over time.")
-    with col_expand:
-        is_fullscreen = fullscreen_toggle("backlog_table")
     
     # Column descriptions help
     display_column_help(title="❓ Column Descriptions")
@@ -329,7 +323,7 @@ else:
     grid_response = AgGrid(
         grid_df,
         gridOptions=grid_options,
-        height=get_grid_height(is_fullscreen, 500),
+        height=500,
         theme='streamlit',
         update_mode=GridUpdateMode.SELECTION_CHANGED,
         fit_columns_on_grid_load=False,

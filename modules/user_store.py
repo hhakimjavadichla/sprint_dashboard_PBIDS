@@ -10,7 +10,11 @@ from typing import Optional, Tuple, List, Dict
 DEFAULT_USERS_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'users.csv')
 
 # Valid roles
-VALID_ROLES = ['Admin', 'Section User']
+# Admin: Full access, can edit everything
+# PBIDS User: Read-only, can view all sections but cannot edit
+# Section Manager: Can edit CustomerPriority in their section(s)
+# Section User: Same as Section Manager (may change later)
+VALID_ROLES = ['Admin', 'PBIDS User', 'Section Manager', 'Section User']
 
 
 class UserStore:
@@ -29,7 +33,8 @@ class UserStore:
                 'Password': 'admin123',
                 'Role': 'Admin',
                 'Section': '',
-                'DisplayName': 'Administrator'
+                'DisplayName': 'Administrator',
+                'Active': True
             }])
             self._save_df(df)
             return df
@@ -37,14 +42,17 @@ class UserStore:
         try:
             df = pd.read_csv(self.store_path)
             # Ensure required columns exist
-            required_cols = ['Username', 'Password', 'Role', 'Section', 'DisplayName']
+            required_cols = ['Username', 'Password', 'Role', 'Section', 'DisplayName', 'Active']
             for col in required_cols:
                 if col not in df.columns:
-                    df[col] = ''
+                    if col == 'Active':
+                        df[col] = True  # Default to active for existing users
+                    else:
+                        df[col] = ''
             return df
         except Exception as e:
             print(f"Error loading user store: {e}")
-            return pd.DataFrame(columns=['Username', 'Password', 'Role', 'Section', 'DisplayName'])
+            return pd.DataFrame(columns=['Username', 'Password', 'Role', 'Section', 'DisplayName', 'Active'])
     
     def _save_df(self, df: pd.DataFrame) -> bool:
         """Save DataFrame to CSV"""
@@ -83,6 +91,14 @@ class UserStore:
             return False, None
         
         user = user_match.iloc[0]
+        
+        # Check if user is active
+        is_active = user.get('Active', True)
+        if isinstance(is_active, str):
+            is_active = is_active.lower() == 'true'
+        if not is_active:
+            return False, {'error': 'inactive', 'message': 'Account is inactive. Contact admin.'}
+        
         return True, {
             'username': user['Username'],
             'role': user['Role'],
@@ -134,7 +150,8 @@ class UserStore:
             'Password': password,
             'Role': role,
             'Section': section,
-            'DisplayName': display_name or username
+            'DisplayName': display_name or username,
+            'Active': True
         }])
         
         self.users_df = pd.concat([self.users_df, new_user], ignore_index=True)
@@ -188,6 +205,31 @@ class UserStore:
         
         if self.save():
             return True, "User deleted successfully"
+        return False, "Failed to save changes"
+    
+    def set_user_active(self, username: str, active: bool) -> Tuple[bool, str]:
+        """Set user active/inactive status"""
+        if self.users_df.empty:
+            return False, "No users found"
+        
+        mask = self.users_df['Username'] == username
+        if not mask.any():
+            return False, f"User '{username}' not found"
+        
+        # Prevent deactivating the last active admin
+        if not active:
+            user_is_admin = not self.users_df[(self.users_df['Username'] == username) & (self.users_df['Role'] == 'Admin')].empty
+            if user_is_admin:
+                # Count active admins
+                active_admins = self.users_df[(self.users_df['Role'] == 'Admin') & (self.users_df['Active'] == True)]
+                if len(active_admins) <= 1:
+                    return False, "Cannot deactivate the last active admin user"
+        
+        self.users_df.loc[mask, 'Active'] = active
+        
+        if self.save():
+            status = "activated" if active else "deactivated"
+            return True, f"User {status} successfully"
         return False, "Failed to save changes"
     
     def get_sections(self) -> List[str]:

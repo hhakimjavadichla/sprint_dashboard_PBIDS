@@ -29,8 +29,8 @@ CLOSED_STATUSES = [
 ]
 
 # Goal types for capacity planning
-GOAL_TYPES = ['None', 'Mandatory', 'Stretch']
-DEFAULT_GOAL_TYPE = 'None'
+GOAL_TYPES = ['', 'Mandatory', 'Stretch']
+DEFAULT_GOAL_TYPE = ''
 
 # Capacity limits per person per sprint (based on 80 hours total)
 CAPACITY_LIMITS = {

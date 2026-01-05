@@ -11,6 +11,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder
 from modules.worklog_store import get_worklog_store
 from modules.sprint_calendar import get_sprint_calendar
 from modules.section_filter import load_valid_team_members
+from modules.offdays_store import get_offdays_store
 from utils.name_mapper import apply_name_mapping
 from components.auth import require_admin, display_user_info
 from utils.grid_styles import apply_grid_styles, get_custom_css
@@ -34,6 +35,7 @@ display_user_info()
 # Load data
 worklog_store = get_worklog_store()
 calendar = get_sprint_calendar()
+offdays_store = get_offdays_store()
 current_sprint = calendar.get_current_sprint()
 
 # Get all worklogs with task info (joined with tasks table for TicketType, Section, etc.)
@@ -83,7 +85,7 @@ with tab1:
     st.subheader("Daily Activity by User")
     st.caption("Shows log frequency and minutes spent per user per day")
     
-    # Sprint filter
+    # Date range filter options
     available_sprints = sorted(all_worklogs['SprintNumber'].dropna().unique(), reverse=True)
     available_sprints = [s for s in available_sprints if s > 0]
     
@@ -93,51 +95,114 @@ with tab1:
     if 'Section' in all_worklogs.columns:
         available_sections += sorted(all_worklogs['Section'].dropna().unique().tolist())
     
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col1:
-        if available_sprints:
-            default_sprint = current_sprint['SprintNumber'] if current_sprint and current_sprint['SprintNumber'] in available_sprints else available_sprints[0]
-            selected_sprint = st.selectbox(
-                "Select Sprint",
-                options=available_sprints,
-                index=available_sprints.index(default_sprint) if default_sprint in available_sprints else 0,
-                format_func=lambda x: f"Sprint {int(x)}"
-            )
-        else:
-            selected_sprint = None
-            st.warning("No sprint data available")
+    # Date range mode selector
+    date_mode = st.radio(
+        "Date Range",
+        options=["Sprint", "Custom Range"],
+        horizontal=True,
+        help="Filter by sprint dates or select a custom date range"
+    )
     
-    with col2:
-        selected_ticket_type = st.selectbox(
-            "Ticket Type",
-            options=available_ticket_types,
-            index=0,
-            help="Filter by ticket type (IR, SR, PR, NC, etc.)"
-        )
+    col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
     
-    with col3:
-        selected_section = st.selectbox(
-            "Section",
-            options=available_sections,
-            index=0,
-            help="Filter by lab section"
-        )
-    
-    if selected_sprint:
-        # Get sprint date range
-        sprint_info = calendar.get_sprint_by_number(int(selected_sprint))
-        if sprint_info is not None:
-            sprint_start = pd.to_datetime(sprint_info['SprintStartDt']).date()
-            sprint_end = pd.to_datetime(sprint_info['SprintEndDt']).date()
-            # Generate all dates in sprint range
-            all_sprint_dates = pd.date_range(start=sprint_start, end=sprint_end).date.tolist()
-        else:
-            all_sprint_dates = None
+    if date_mode == "Sprint":
+        with col1:
+            if available_sprints:
+                default_sprint = current_sprint['SprintNumber'] if current_sprint and current_sprint['SprintNumber'] in available_sprints else available_sprints[0]
+                selected_sprint = st.selectbox(
+                    "Select Sprint",
+                    options=available_sprints,
+                    index=available_sprints.index(default_sprint) if default_sprint in available_sprints else 0,
+                    format_func=lambda x: f"Sprint {int(x)}"
+                )
+            else:
+                selected_sprint = None
+                st.warning("No sprint data available")
         
-        # Filter worklogs by sprint, ticket type, and section
-        sprint_worklogs = all_worklogs[all_worklogs['SprintNumber'] == selected_sprint].copy()
-        if selected_ticket_type != 'All':
-            sprint_worklogs = sprint_worklogs[sprint_worklogs['TicketType'] == selected_ticket_type]
+        with col2:
+            selected_ticket_types = st.multiselect(
+                "Ticket Type",
+                options=available_ticket_types[1:],  # Exclude 'All' from multiselect
+                default=[],
+                help="Filter by ticket type (leave empty for all)",
+                key="tab1_ticket_type_sprint"
+            )
+        
+        with col3:
+            selected_section = st.selectbox(
+                "Section",
+                options=available_sections,
+                index=0,
+                help="Filter by lab section",
+                key="tab1_section_sprint"
+            )
+        
+        # Get sprint date range
+        if selected_sprint:
+            sprint_info = calendar.get_sprint_by_number(int(selected_sprint))
+            if sprint_info is not None:
+                filter_start = pd.to_datetime(sprint_info['SprintStartDt']).date()
+                filter_end = pd.to_datetime(sprint_info['SprintEndDt']).date()
+            else:
+                filter_start = None
+                filter_end = None
+        else:
+            filter_start = None
+            filter_end = None
+    else:
+        # Custom date range
+        from datetime import date, timedelta
+        
+        # Default to last 30 days
+        default_end = date.today()
+        default_start = default_end - timedelta(days=30)
+        
+        with col1:
+            filter_start = st.date_input(
+                "Start Date",
+                value=default_start,
+                help="Select start date for the range"
+            )
+        
+        with col2:
+            filter_end = st.date_input(
+                "End Date",
+                value=default_end,
+                help="Select end date for the range"
+            )
+        
+        with col3:
+            selected_ticket_types = st.multiselect(
+                "Ticket Type",
+                options=available_ticket_types[1:],  # Exclude 'All' from multiselect
+                default=[],
+                help="Filter by ticket type (leave empty for all)",
+                key="tab1_ticket_type_custom"
+            )
+        
+        with col4:
+            selected_section = st.selectbox(
+                "Section",
+                options=available_sections,
+                index=0,
+                help="Filter by lab section",
+                key="tab1_section_custom"
+            )
+        
+        selected_sprint = None  # No sprint filter in custom mode
+    
+    if filter_start and filter_end:
+        # Generate all dates in the range
+        all_sprint_dates = pd.date_range(start=filter_start, end=filter_end).date.tolist()
+        
+        # Filter worklogs by date range
+        all_worklogs['LogDate'] = pd.to_datetime(all_worklogs['LogDate'])
+        sprint_worklogs = all_worklogs[
+            (all_worklogs['LogDate'].dt.date >= filter_start) &
+            (all_worklogs['LogDate'].dt.date <= filter_end)
+        ].copy()
+        if selected_ticket_types:
+            sprint_worklogs = sprint_worklogs[sprint_worklogs['TicketType'].isin(selected_ticket_types)]
         if selected_section != 'All' and 'Section' in sprint_worklogs.columns:
             sprint_worklogs = sprint_worklogs[sprint_worklogs['Section'] == selected_section]
         
@@ -155,12 +220,13 @@ with tab1:
             st.markdown("### Work Log Entry Frequency by User & Date")
             st.caption("Number of worklog entries per day")
             filter_parts = []
-            if selected_ticket_type != 'All':
-                filter_parts.append(selected_ticket_type)
+            if selected_ticket_types:
+                filter_parts.append(', '.join(selected_ticket_types))
             if selected_section != 'All':
                 filter_parts.append(selected_section)
             filter_msg = f" ({', '.join(filter_parts)})" if filter_parts else ""
-            st.info(f"No activity recorded for Sprint {int(selected_sprint)}{filter_msg}")
+            date_range_msg = f"Sprint {int(selected_sprint)}" if selected_sprint else f"{filter_start} to {filter_end}"
+            st.info(f"No activity recorded for {date_range_msg}{filter_msg}")
         else:
             # Apply name mapping to filtered worklogs
             sprint_worklogs = apply_name_mapping(sprint_worklogs, 'Owner')
@@ -171,11 +237,14 @@ with tab1:
             
             # Build filter label for captions
             filter_parts = []
-            if selected_ticket_type != 'All':
-                filter_parts.append(selected_ticket_type)
+            if selected_ticket_types:
+                filter_parts.append(', '.join(selected_ticket_types))
             if selected_section != 'All':
                 filter_parts.append(selected_section)
             filter_label = f" (Filtered: {', '.join(filter_parts)})" if filter_parts else ""
+            
+            # Color legend
+            st.markdown("**Color Legend:** 🟪 Weekend | 🟥 Off Day (configured in Admin Config)")
             
             # Pivot table: users as rows, dates as columns
             st.markdown("### Work Log Entry Frequency by User & Date")
@@ -207,19 +276,41 @@ with tab1:
             # Rename columns to shorter MM/DD format
             log_pivot.columns = [d.strftime('%m/%d') if hasattr(d, 'strftime') else str(d)[-5:] for d in log_pivot.columns]
             
-            # Style with weekend highlighting
-            def highlight_weekends(df, weekend_cols):
+            # Build off days mapping for this sprint (username -> list of off dates as MM/DD)
+            offdays_by_user = {}
+            if selected_sprint:
+                sprint_offdays = offdays_store.get_offdays_for_sprint(int(selected_sprint))
+                if not sprint_offdays.empty:
+                    # Apply name mapping to get display names
+                    sprint_offdays_mapped = apply_name_mapping(sprint_offdays.copy(), 'Username')
+                    offdays_display_col = 'Username_Display' if 'Username_Display' in sprint_offdays_mapped.columns else 'Username'
+                    for _, row in sprint_offdays_mapped.iterrows():
+                        display_name = row[offdays_display_col]
+                        off_date = pd.to_datetime(row['OffDate']).strftime('%m/%d')
+                        if display_name not in offdays_by_user:
+                            offdays_by_user[display_name] = []
+                        offdays_by_user[display_name].append(off_date)
+            
+            # Style with weekend and off day highlighting
+            def highlight_weekends_and_offdays(df, weekend_cols, offdays_by_user):
                 styles = pd.DataFrame('', index=df.index, columns=df.columns)
+                # First, mark weekends
                 for col in weekend_cols:
                     if col in df.columns:
                         styles[col] = 'background-color: #f8f5fc'  # Very light purple for weekends
+                # Then, mark off days (per user) - overrides weekends
+                for user in df.index:
+                    if user in offdays_by_user:
+                        for off_col in offdays_by_user[user]:
+                            if off_col in df.columns:
+                                styles.loc[user, off_col] = 'background-color: #ffe6e6'  # Light red for off days
                 return styles
             
             st.dataframe(
                 log_pivot.style.background_gradient(cmap='Blues', axis=None).apply(
-                    lambda df: highlight_weekends(df, weekend_cols), axis=None
+                    lambda df: highlight_weekends_and_offdays(df, weekend_cols, offdays_by_user), axis=None
                 ),
-                use_container_width=True
+                use_container_width=False
             )
             
             st.divider()
@@ -256,12 +347,12 @@ with tab1:
             # Rename columns to shorter MM/DD format
             hours_pivot.columns = [d.strftime('%m/%d') if hasattr(d, 'strftime') else str(d)[-5:] for d in hours_pivot.columns]
             
-            # Display hours with green color gradient and weekend highlighting (format to 1 decimal place)
+            # Display hours with green color gradient and weekend/off day highlighting (format to 1 decimal place)
             st.dataframe(
                 hours_pivot.style.background_gradient(cmap='Greens', axis=None).apply(
-                    lambda df: highlight_weekends(df, weekend_cols_hrs), axis=None
+                    lambda df: highlight_weekends_and_offdays(df, weekend_cols_hrs, offdays_by_user), axis=None
                 ).format("{:.1f}"),
-                use_container_width=True
+                use_container_width=False
             )
             
             st.divider()
@@ -300,12 +391,12 @@ with tab1:
             # Rename columns to shorter MM/DD format
             task_pivot.columns = [d.strftime('%m/%d') if hasattr(d, 'strftime') else str(d)[-5:] for d in task_pivot.columns]
             
-            # Display with orange color gradient and weekend highlighting
+            # Display with orange color gradient and weekend/off day highlighting
             st.dataframe(
                 task_pivot.style.background_gradient(cmap='Oranges', axis=None).apply(
-                    lambda df: highlight_weekends(df, weekend_cols_tasks), axis=None
+                    lambda df: highlight_weekends_and_offdays(df, weekend_cols_tasks, offdays_by_user), axis=None
                 ),
-                use_container_width=True
+                use_container_width=False
             )
             
             # Export

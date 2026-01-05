@@ -11,7 +11,7 @@ from modules.task_store import get_task_store, CLOSED_STATUSES
 from modules.sprint_calendar import get_sprint_calendar
 from components.auth import require_admin, display_user_info, is_admin
 from utils.exporters import export_to_csv, export_to_excel
-from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, fullscreen_toggle, get_grid_height
+from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS
 
 st.set_page_config(
     page_title="Sprint View (Prototype)",
@@ -132,44 +132,72 @@ with tab1:
     tab1_assignee_col = 'AssignedTo_Display' if 'AssignedTo_Display' in sprint_tasks.columns else 'AssignedTo'
     filtered_df = sprint_tasks.copy()
     
-    col_info, col_expand = st.columns([4, 1])
-    with col_info:
-        st.caption(f"Showing {len(filtered_df)} tasks")
-    with col_expand:
-        is_fullscreen_tab1 = fullscreen_toggle("sprint_view_tab1")
+    st.caption(f"Showing {len(filtered_df)} tasks")
     
-    # Display columns - use display name for assignee
-    display_cols = [
-        'UniqueTaskId', 'TaskNum', 'Status', tab1_assignee_col, 'Subject',
-        'OriginalSprintNumber', 'IsCarryover', 'TaskAssignedDt', 'StatusUpdateDt',
-        'TicketType'
+    # All columns - same as Sprint Planning (read-only view)
+    full_column_order = [
+        'SprintNumber', 'SprintName', 'SprintStartDt', 'SprintEndDt', 'TaskOrigin', 'SprintsAssigned',
+        'TicketNum', 'TaskCount', 'TicketType', 'Section', 'CustomerName', 'TaskNum',
+        'Status', tab1_assignee_col, 'Subject', 'TicketCreatedDt', 'TaskCreatedDt',
+        'DaysOpen', 'CustomerPriority', 'FinalPriority', 'GoalType', 'DependencyOn',
+        'DependenciesLead', 'DependencySecured', 'Comments', 'HoursEstimated',
+        'TaskHoursSpent', 'TicketHoursSpent'
     ]
-    display_cols = [c for c in display_cols if c in filtered_df.columns]
+    display_order = ['UniqueTaskId', '_TicketGroup', '_IsMultiTask'] + full_column_order
+    
+    available_cols = [col for col in display_order if col in filtered_df.columns]
+    display_df = filtered_df[available_cols].copy()
     
     # Configure grid
-    gb = GridOptionsBuilder.from_dataframe(filtered_df[display_cols])
+    gb = GridOptionsBuilder.from_dataframe(display_df)
     gb.configure_default_column(resizable=True, filterable=True, sortable=True)
-    gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS['Subject'], tooltipField='Subject')
-    gb.configure_column('UniqueTaskId', header_name='UniqueTaskId', width=COLUMN_WIDTHS['UniqueTaskId'])
-    gb.configure_column('TaskNum', header_name='TaskNum', width=COLUMN_WIDTHS['TaskNum'])
-    gb.configure_column('IsCarryover', header_name='IsCarryover', width=COLUMN_WIDTHS.get('IsCarryover', 100))
-    gb.configure_column(tab1_assignee_col, header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'])
-    gb.configure_column('Status', header_name='Status', width=COLUMN_WIDTHS['Status'])
+    
+    # Hidden columns
+    gb.configure_column('UniqueTaskId', hide=True)
+    gb.configure_column('_TicketGroup', hide=True)
+    gb.configure_column('_IsMultiTask', hide=True)
+    
+    # Sprint columns
+    gb.configure_column('SprintNumber', header_name='SprintNumber', width=COLUMN_WIDTHS.get('SprintNumber', 100))
+    gb.configure_column('SprintName', header_name='SprintName', width=COLUMN_WIDTHS.get('SprintName', 120))
+    gb.configure_column('SprintStartDt', header_name='SprintStartDt', width=COLUMN_WIDTHS.get('SprintStartDt', 100))
+    gb.configure_column('SprintEndDt', header_name='SprintEndDt', width=COLUMN_WIDTHS.get('SprintEndDt', 100))
+    gb.configure_column('TaskOrigin', header_name='TaskOrigin', width=COLUMN_WIDTHS.get('TaskOrigin', 90))
+    gb.configure_column('SprintsAssigned', header_name='SprintsAssigned', width=COLUMN_WIDTHS.get('SprintsAssigned', 130))
+    
+    # Ticket/Task columns
+    gb.configure_column('TicketNum', header_name='TicketNum', width=COLUMN_WIDTHS['TicketNum'])
+    gb.configure_column('TaskCount', header_name='Task#', width=COLUMN_WIDTHS.get('TaskCount', 70))
     gb.configure_column('TicketType', header_name='TicketType', width=COLUMN_WIDTHS['TicketType'])
-    gb.configure_column('OriginalSprintNumber', header_name='OriginalSprintNumber', width=COLUMN_WIDTHS['OriginalSprintNumber'])
-    gb.configure_column('TaskAssignedDt', header_name='TaskAssignedDt', width=COLUMN_WIDTHS['TaskAssignedDt'])
-    gb.configure_column('StatusUpdateDt', header_name='StatusUpdateDt', width=COLUMN_WIDTHS['StatusUpdateDt'])
+    gb.configure_column('Section', header_name='Section', width=COLUMN_WIDTHS.get('Section', 100))
+    gb.configure_column('CustomerName', header_name='CustomerName', width=COLUMN_WIDTHS.get('CustomerName', 120))
+    gb.configure_column('TaskNum', header_name='TaskNum', width=COLUMN_WIDTHS['TaskNum'])
+    gb.configure_column('Status', header_name='Status', width=COLUMN_WIDTHS['Status'])
+    gb.configure_column(tab1_assignee_col, header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'])
+    gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS['Subject'], tooltipField='Subject')
+    gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=COLUMN_WIDTHS.get('TicketCreatedDt', 110))
+    gb.configure_column('TaskCreatedDt', header_name='TaskCreatedDt', width=COLUMN_WIDTHS.get('TaskCreatedDt', 110))
+    gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'])
+    gb.configure_column('CustomerPriority', header_name='CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'], cellStyle=PRIORITY_CELL_STYLE)
+    gb.configure_column('FinalPriority', header_name='FinalPriority', width=COLUMN_WIDTHS.get('FinalPriority', 100))
+    gb.configure_column('GoalType', header_name='GoalType', width=COLUMN_WIDTHS.get('GoalType', 90))
+    gb.configure_column('DependencyOn', header_name='Dependency', width=COLUMN_WIDTHS.get('DependencyOn', 110))
+    gb.configure_column('DependenciesLead', header_name='DependencyLead(s)', width=COLUMN_WIDTHS.get('DependenciesLead', 120))
+    gb.configure_column('DependencySecured', header_name='DependencySecured', width=COLUMN_WIDTHS.get('DependencySecured', 130))
+    gb.configure_column('Comments', header_name='Comments', width=COLUMN_WIDTHS['Comments'], tooltipField='Comments')
+    gb.configure_column('HoursEstimated', header_name='HoursEstimated', width=COLUMN_WIDTHS['HoursEstimated'])
+    gb.configure_column('TaskHoursSpent', header_name='TaskHoursSpent', width=COLUMN_WIDTHS.get('TaskHoursSpent', 110))
+    gb.configure_column('TicketHoursSpent', header_name='TicketHoursSpent', width=COLUMN_WIDTHS.get('TicketHoursSpent', 120))
     gb.configure_pagination(enabled=False)
     
     grid_options = gb.build()
     
     AgGrid(
-        filtered_df[display_cols],
+        display_df,
         gridOptions=grid_options,
-        height=get_grid_height(is_fullscreen_tab1, 600),
+        height=600,
         theme='streamlit',
         fit_columns_on_grid_load=False,
-        enable_enterprise_modules=False,
         custom_css=get_custom_css(),
         allow_unsafe_jscode=True
     )

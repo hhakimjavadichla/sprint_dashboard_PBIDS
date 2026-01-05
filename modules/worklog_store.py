@@ -267,15 +267,12 @@ class WorklogStore:
             # Join worklogs with tasks (LEFT JOIN to keep all worklogs)
             result = result.merge(tasks_subset, on='TaskNum', how='left')
             
-            # Fill missing TicketType by extracting from TaskNum as fallback
-            if 'TicketType' in result.columns:
-                mask = result['TicketType'].isna() | (result['TicketType'] == '')
-                result.loc[mask, 'TicketType'] = result.loc[mask, 'TaskNum'].astype(str).str.extract(r'^([A-Z]+)', expand=False).fillna('Other')
-            else:
-                result['TicketType'] = result['TaskNum'].astype(str).str.extract(r'^([A-Z]+)', expand=False).fillna('Other')
+            # TicketType comes from Subject parsing in tasks - no fallback
+            if 'TicketType' not in result.columns:
+                result['TicketType'] = 'NC'
         else:
-            # No tasks data - derive TicketType from TaskNum
-            result['TicketType'] = result['TaskNum'].astype(str).str.extract(r'^([A-Z]+)', expand=False).fillna('Other')
+            # No tasks data - default to NC
+            result['TicketType'] = 'NC'
         
         result = apply_name_mapping(result, 'Owner')
         return result

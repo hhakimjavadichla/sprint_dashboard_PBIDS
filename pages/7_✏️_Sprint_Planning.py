@@ -11,7 +11,7 @@ from modules.task_store import get_task_store, VALID_STATUSES
 from modules.sprint_calendar import get_sprint_calendar
 from modules.capacity_validator import validate_capacity, get_capacity_dataframe
 from components.auth import require_admin, display_user_info
-from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, TASK_ORIGIN_CELL_STYLE, COLUMN_WIDTHS, get_column_width, COLUMN_DESCRIPTIONS, fullscreen_toggle, get_grid_height, display_column_help
+from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, TASK_ORIGIN_CELL_STYLE, COLUMN_WIDTHS, get_column_width, COLUMN_DESCRIPTIONS, display_column_help
 from utils.constants import VALID_SECTIONS
 from utils.exporters import export_to_excel
 
@@ -139,7 +139,7 @@ if sprint_tasks.empty:
     2. Select tasks you want to include in this sprint
     3. Assign them to Sprint {}
     """.format(selected_sprint_num))
-    st.page_link("pages/8_📋_Work_Backlogs.py", label="📋 Go to Work Backlogs", icon="📋")
+    st.page_link("pages/8_📋_Work_Backlogs.py", label="📋 Go to Work Backlogs & Sprint Assignment", icon="📋")
     st.stop()
 
 # Filters
@@ -198,44 +198,42 @@ if not sprint_tasks.empty and 'TicketType' in sprint_tasks.columns:
     type_labels = {
         'SR': 'SR (Service Request)',
         'PR': 'PR (Problem)',
-        'IR': 'IR (Incident)',
-        'NC': 'NC (New Change)',
-        'AD': 'AD (Admin)'
+        'IR': 'IR (Incident Request)',
+        'NC': 'NC (Non-classified IS Requests)',
+        'AD': 'AD (Admin Request)'
     }
     
-    # Row 1: Tasks by category
-    st.caption("**Tasks** (a ticket may have multiple tasks)")
+    # Row 1: Tickets by category
     col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     with col1:
-        st.metric("SR", task_counts.get('SR', 0), help=type_labels['SR'])
+        st.metric("Total Current Tickets", total_tickets)
     with col2:
-        st.metric("PR", task_counts.get('PR', 0), help=type_labels['PR'])
-    with col3:
-        st.metric("IR", task_counts.get('IR', 0), help=type_labels['IR'])
-    with col4:
-        st.metric("NC", task_counts.get('NC', 0), help=type_labels['NC'])
-    with col5:
-        st.metric("AD", task_counts.get('AD', 0), help=type_labels['AD'])
-    with col6:
-        st.metric("Total Tasks", len(sprint_tasks))
-    
-    # Row 2: Tickets by category
-    st.caption("**Tickets** (unique ticket numbers)")
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-    
-    with col1:
         st.metric("SR", ticket_counts.get('SR', 0), help=type_labels['SR'])
-    with col2:
-        st.metric("PR", ticket_counts.get('PR', 0), help=type_labels['PR'])
     with col3:
-        st.metric("IR", ticket_counts.get('IR', 0), help=type_labels['IR'])
+        st.metric("PR", ticket_counts.get('PR', 0), help=type_labels['PR'])
     with col4:
-        st.metric("NC", ticket_counts.get('NC', 0), help=type_labels['NC'])
+        st.metric("IR", ticket_counts.get('IR', 0), help=type_labels['IR'])
     with col5:
-        st.metric("AD", ticket_counts.get('AD', 0), help=type_labels['AD'])
+        st.metric("NC", ticket_counts.get('NC', 0), help=type_labels['NC'])
     with col6:
-        st.metric("Total Tickets", total_tickets)
+        st.metric("AD", ticket_counts.get('AD', 0), help=type_labels['AD'])
+    
+    # Row 2: Tasks by category
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    
+    with col1:
+        st.metric("Total Current Tasks", len(sprint_tasks))
+    with col2:
+        st.metric("SR", task_counts.get('SR', 0), help=type_labels['SR'])
+    with col3:
+        st.metric("PR", task_counts.get('PR', 0), help=type_labels['PR'])
+    with col4:
+        st.metric("IR", task_counts.get('IR', 0), help=type_labels['IR'])
+    with col5:
+        st.metric("NC", task_counts.get('NC', 0), help=type_labels['NC'])
+    with col6:
+        st.metric("AD", task_counts.get('AD', 0), help=type_labels['AD'])
 
 st.divider()
 
@@ -253,7 +251,10 @@ if not filtered_tasks.empty:
     st.divider()
     
     # Define DependencySecured dropdown values
-    DEPENDENCY_SECURED_VALUES = ['', 'Yes', 'Pending', 'No', 'NA']
+    DEPENDENCY_SECURED_VALUES = ['', 'Yes', 'Pending', 'No']
+    
+    # Define Dependency dropdown values
+    DEPENDENCY_VALUES = ['', 'Yes', 'No']
     
     # Priority dropdown values: 0=No longer needed, 1=Lowest to 5=Highest, NotAssigned
     PRIORITY_VALUES = ['NotAssigned', 0, 1, 2, 3, 4, 5]
@@ -347,7 +348,7 @@ if not filtered_tasks.empty:
     
     # Ensure GoalType column exists
     if 'GoalType' not in edit_df.columns:
-        edit_df['GoalType'] = 'None'
+        edit_df['GoalType'] = ''
     
     # Select columns in the specified order (UniqueTaskId and hidden tracking columns always included)
     # Columns aligned with Work Backlogs page (plus sprint-specific columns)
@@ -436,10 +437,12 @@ if not filtered_tasks.empty:
     gb.configure_column('GoalType', header_name='✏️ GoalType', width=COLUMN_WIDTHS['GoalType'], editable=True,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('GoalType', ''),
                         cellEditor='agSelectCellEditor',
-                        cellEditorParams={'values': ['None', 'Mandatory', 'Stretch']})
-    gb.configure_column('DependencyOn', header_name='✏️ DependencyOn', width=COLUMN_WIDTHS['DependencyOn'], editable=True,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('DependencyOn', ''))
-    gb.configure_column('DependenciesLead', header_name='✏️ DependenciesLead', width=COLUMN_WIDTHS['DependenciesLead'], editable=True,
+                        cellEditorParams={'values': ['', 'Mandatory', 'Stretch']})
+    gb.configure_column('DependencyOn', header_name='✏️ Dependency', width=COLUMN_WIDTHS['DependencyOn'], editable=True,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('DependencyOn', ''),
+                        cellEditor='agSelectCellEditor',
+                        cellEditorParams={'values': DEPENDENCY_VALUES})
+    gb.configure_column('DependenciesLead', header_name='✏️ DependencyLead(s)', width=COLUMN_WIDTHS['DependenciesLead'], editable=True,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('DependenciesLead', ''),
                         tooltipField='DependenciesLead',
                         cellEditor='agLargeTextCellEditor',
@@ -482,13 +485,7 @@ if not filtered_tasks.empty:
     grid_options = gb.build()
     grid_options['getRowStyle'] = row_style_jscode
     
-    col_info, col_help, col_expand = st.columns([3, 1, 1])
-    with col_info:
-        st.caption("✏️ = Editable column (double-click to edit). Changes are saved when you click 'Save Changes' below.")
-    with col_help:
-        pass  # Column help expander will be below
-    with col_expand:
-        is_fullscreen = fullscreen_toggle("planning_table")
+    st.caption("✏️ = Editable column (double-click to edit). Changes are saved when you click 'Save Changes' below.")
     
     # Column descriptions help
     display_column_help(title="❓ Column Descriptions")
@@ -497,13 +494,12 @@ if not filtered_tasks.empty:
     grid_response = AgGrid(
         edit_df,
         gridOptions=grid_options,
-        height=get_grid_height(is_fullscreen, 600),
+        height=600,
         theme='streamlit',
         update_mode=GridUpdateMode.VALUE_CHANGED,
         data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
         fit_columns_on_grid_load=False,
         allow_unsafe_jscode=True,
-        enable_enterprise_modules=False,
         custom_css=get_custom_css()
     )
     

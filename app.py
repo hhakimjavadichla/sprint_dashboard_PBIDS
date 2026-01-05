@@ -127,9 +127,15 @@ if not check_authentication():
     
     with col2:
         st.markdown("### Test Credentials")
-        st.code("""
-admin / admin123
-testuser / test123
+        st.markdown("""
+        **Admin:**
+        - `admin` / `admin123`
+        
+        **Section Users:**
+        - `testuser` / `test123` (CoreLab - Chemistry)
+        - `corelab` / `corelab123` (CoreLab - Hematology)
+        - `micro` / `micro123` (Micro - Microbiology)
+        - `multiuser` / `multi123` (Multi-section: Micro + CPM)
         """)
 
 else:

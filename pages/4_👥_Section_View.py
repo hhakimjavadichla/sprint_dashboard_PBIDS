@@ -9,9 +9,9 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 from st_aggrid.shared import JsCode
 from modules.task_store import get_task_store, CLOSED_STATUSES
 from modules.section_filter import filter_by_section, get_section_summary
-from components.auth import require_auth, display_user_info, get_user_role, get_user_section
+from components.auth import require_auth, display_user_info, get_user_role, get_user_section, is_admin, is_pbids_user, can_edit_section
 from utils.exporters import export_to_csv, export_to_excel
-from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, fullscreen_toggle, get_grid_height, display_column_help
+from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, display_column_help
 
 st.set_page_config(
     page_title="Section View (Prototype)",
@@ -35,6 +35,10 @@ display_user_info()
 task_store = get_task_store()
 sprint_df = task_store.get_current_sprint_tasks()
 
+# Filter to only open tasks (exclude completed/closed)
+if sprint_df is not None and not sprint_df.empty and 'Status' in sprint_df.columns:
+    sprint_df = sprint_df[~sprint_df['Status'].isin(CLOSED_STATUSES)].copy()
+
 if sprint_df is None or sprint_df.empty:
     st.warning("⚠️ No active sprint found")
     st.info("No sprint data available. Please contact an administrator.")
@@ -42,11 +46,18 @@ if sprint_df is None or sprint_df.empty:
 
 # Get user's section
 user_role = get_user_role()
-user_section = get_user_section()
+user_section_raw = get_user_section()
 
-# For admins, allow section selection
-if user_role == 'Admin':
-    st.info("👑 **Admin View**: Select a section to view or see all sections")
+# Parse user sections (may be comma-separated for multi-section users)
+user_sections = []
+if user_section_raw:
+    user_sections = [s.strip() for s in user_section_raw.split(',') if s.strip()]
+
+# For admins and PBIDS Users, allow section selection (view all sections)
+if is_admin() or is_pbids_user():
+    role_label = "Admin" if is_admin() else "PBIDS User"
+    edit_note = "" if is_admin() else " (Read-only)"
+    st.info(f"👑 **{role_label} View{edit_note}**: Select a section to view or see all sections")
     
     sections = sorted(sprint_df['Section'].dropna().unique().tolist())
     selected_section = st.selectbox(
@@ -56,70 +67,84 @@ if user_role == 'Admin':
     )
     
     if selected_section != 'All Sections':
-        user_section = selected_section
-        sprint_df = filter_by_section(sprint_df, user_section)
+        sprint_df = filter_by_section(sprint_df, selected_section)
+        display_sections = [selected_section]
+    else:
+        display_sections = sections
 else:
-    # Section users can only see their own section
-    if not user_section:
+    # Section Managers and Section Users can only see their assigned sections
+    if not user_sections:
         st.error("⚠️ No section assigned to your account")
         st.info("Please contact an administrator to assign a section")
         st.stop()
     
-    sprint_df = filter_by_section(sprint_df, user_section)
-    st.info(f"👁️ Viewing tasks for: **{user_section}**")
+    # Filter to include all user's sections
+    if 'Section' in sprint_df.columns:
+        sprint_df = sprint_df[sprint_df['Section'].isin(user_sections)].copy()
+    
+    display_sections = user_sections
+    role_label = "Section Manager" if user_role == 'Section Manager' else "Section User"
+    st.info(f"👁️ **{role_label}**: Viewing tasks for **{', '.join(user_sections)}**")
 
 st.divider()
 
-# Section summary
-if user_section:
-    summary = get_section_summary(sprint_df, user_section)
+# Summary metrics by ticket type - same format as Work Backlogs
+if not sprint_df.empty and 'TicketType' in sprint_df.columns:
+    # Count tasks by type
+    task_counts = sprint_df['TicketType'].value_counts().to_dict()
     
-    col1, col2, col3, col4, col5 = st.columns(5)
+    # Count unique tickets by type
+    ticket_counts = {}
+    if 'TicketNum' in sprint_df.columns:
+        for ticket_type in ['SR', 'PR', 'IR', 'NC', 'AD']:
+            ticket_counts[ticket_type] = sprint_df[sprint_df['TicketType'] == ticket_type]['TicketNum'].nunique()
+        total_tickets = sprint_df['TicketNum'].nunique()
+    else:
+        ticket_counts = task_counts.copy()
+        total_tickets = len(sprint_df)
+    
+    # Ticket type labels
+    type_labels = {
+        'SR': 'SR (Service Request)',
+        'PR': 'PR (Problem)',
+        'IR': 'IR (Incident Request)',
+        'NC': 'NC (Non-classified IS Requests)',
+        'AD': 'AD (Admin Request)'
+    }
+    
+    # Row 1: Tickets by category
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     with col1:
-        st.metric(
-            "Total Tasks",
-            summary['total_tasks'],
-            help="All tasks assigned to this section"
-        )
-    
+        st.metric("Total Current Tickets", total_tickets)
     with col2:
-        st.metric(
-            "Completed",
-            summary['completed'],
-            delta=f"{(summary['completed']/summary['total_tasks']*100):.0f}%" if summary['total_tasks'] > 0 else "0%",
-            help="Tasks marked as completed"
-        )
-    
+        st.metric("SR", ticket_counts.get('SR', 0), help=type_labels['SR'])
     with col3:
-        st.metric(
-            "In Progress",
-            summary['in_progress'],
-            help="Tasks currently being worked on"
-        )
-    
+        st.metric("PR", ticket_counts.get('PR', 0), help=type_labels['PR'])
     with col4:
-        st.metric(
-            "At Risk",
-            summary['at_risk'],
-            delta="⚠️" if summary['at_risk'] > 0 else "✅",
-            help="Tasks approaching or exceeding TAT"
-        )
-    
+        st.metric("IR", ticket_counts.get('IR', 0), help=type_labels['IR'])
     with col5:
-        st.metric(
-            "Avg Days Open",
-            f"{summary['avg_days_open']:.1f}",
-            help="Average age of tasks in this section"
-        )
+        st.metric("NC", ticket_counts.get('NC', 0), help=type_labels['NC'])
+    with col6:
+        st.metric("AD", ticket_counts.get('AD', 0), help=type_labels['AD'])
     
+    # Row 2: Tasks by category
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    
+    with col1:
+        st.metric("Total Current Tasks", len(sprint_df))
+    with col2:
+        st.metric("SR", task_counts.get('SR', 0), help=type_labels['SR'])
+    with col3:
+        st.metric("PR", task_counts.get('PR', 0), help=type_labels['PR'])
+    with col4:
+        st.metric("IR", task_counts.get('IR', 0), help=type_labels['IR'])
+    with col5:
+        st.metric("NC", task_counts.get('NC', 0), help=type_labels['NC'])
+    with col6:
+        st.metric("AD", task_counts.get('AD', 0), help=type_labels['AD'])
+
     st.divider()
-    
-    # Team members
-    if summary['team_members']:
-        st.subheader("👥 Team Members")
-        st.write(", ".join(summary['team_members']))
-        st.divider()
 
 # Use all tasks (AgGrid has built-in filtering)
 filtered_df = sprint_df.copy()
@@ -128,11 +153,7 @@ st.caption(f"Showing {len(filtered_df)} tasks")
 
 # Task table - Priority is editable for open tasks
 st.markdown("### Tasks")
-col_info, col_expand = st.columns([4, 1])
-with col_info:
-    st.caption("💡 You can edit **Priority** for open tasks. Double-click the Priority cell to change it.")
-with col_expand:
-    is_fullscreen = fullscreen_toggle("section_view")
+st.caption("💡 You can edit **Priority** for open tasks. Double-click the Priority cell to change it.")
 
 # Column descriptions help
 display_column_help(title="❓ Column Descriptions")
@@ -144,21 +165,18 @@ if not filtered_df.empty:
     # Priority dropdown values: 0=No longer needed, 1=Lowest to 5=Highest, NotAssigned
     PRIORITY_VALUES = ['NotAssigned', 0, 1, 2, 3, 4, 5]
     
-    # Select columns to display (include UniqueTaskId for tracking)
-    display_cols = [
-        'UniqueTaskId',
-        'TaskNum',
-        'TicketNum',
-        'TicketType',
-        'Subject',
-        'Status',
-        sv_assignee_col,
-        'DaysOpen',
-        'HoursEstimated',
-        'Comments'
+    # All columns - same as Sprint Planning (only CustomerPriority is editable here)
+    full_column_order = [
+        'SprintNumber', 'SprintName', 'SprintStartDt', 'SprintEndDt', 'TaskOrigin', 'SprintsAssigned',
+        'TicketNum', 'TaskCount', 'TicketType', 'Section', 'CustomerName', 'TaskNum',
+        'Status', sv_assignee_col, 'Subject', 'TicketCreatedDt', 'TaskCreatedDt',
+        'DaysOpen', 'CustomerPriority', 'FinalPriority', 'GoalType', 'DependencyOn',
+        'DependenciesLead', 'DependencySecured', 'Comments', 'HoursEstimated',
+        'TaskHoursSpent', 'TicketHoursSpent'
     ]
+    display_order = ['UniqueTaskId', '_TicketGroup', '_IsMultiTask'] + full_column_order
     
-    available_cols = [col for col in display_cols if col in filtered_df.columns]
+    available_cols = [col for col in display_order if col in filtered_df.columns]
     display_df = filtered_df[available_cols].copy()
     
     # Mark which rows are editable (open tasks only)
@@ -167,28 +185,85 @@ if not filtered_df.empty:
     # Configure AgGrid
     gb = GridOptionsBuilder.from_dataframe(display_df)
     gb.configure_default_column(resizable=True, filterable=True, sortable=True)
+    
+    # Hidden columns
     gb.configure_column('UniqueTaskId', hide=True)
+    gb.configure_column('_TicketGroup', hide=True)
+    gb.configure_column('_IsMultiTask', hide=True)
     gb.configure_column('_is_open', hide=True)
-    gb.configure_column('TaskNum', header_name='TaskNum', width=COLUMN_WIDTHS['TaskNum'])
+    
+    # Sprint columns
+    gb.configure_column('SprintNumber', header_name='SprintNumber', width=COLUMN_WIDTHS.get('SprintNumber', 100))
+    gb.configure_column('SprintName', header_name='SprintName', width=COLUMN_WIDTHS.get('SprintName', 120))
+    gb.configure_column('SprintStartDt', header_name='SprintStartDt', width=COLUMN_WIDTHS.get('SprintStartDt', 100))
+    gb.configure_column('SprintEndDt', header_name='SprintEndDt', width=COLUMN_WIDTHS.get('SprintEndDt', 100))
+    gb.configure_column('TaskOrigin', header_name='TaskOrigin', width=COLUMN_WIDTHS.get('TaskOrigin', 90))
+    gb.configure_column('SprintsAssigned', header_name='SprintsAssigned', width=COLUMN_WIDTHS.get('SprintsAssigned', 130))
+    
+    # Ticket/Task columns
     gb.configure_column('TicketNum', header_name='TicketNum', width=COLUMN_WIDTHS['TicketNum'])
+    gb.configure_column('TaskCount', header_name='Task#', width=COLUMN_WIDTHS.get('TaskCount', 70))
     gb.configure_column('TicketType', header_name='TicketType', width=COLUMN_WIDTHS['TicketType'])
-    gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS['Subject'], tooltipField='Subject')
+    gb.configure_column('Section', header_name='Section', width=COLUMN_WIDTHS.get('Section', 100))
+    gb.configure_column('CustomerName', header_name='CustomerName', width=COLUMN_WIDTHS.get('CustomerName', 120))
+    gb.configure_column('TaskNum', header_name='TaskNum', width=COLUMN_WIDTHS['TaskNum'])
     gb.configure_column('Status', header_name='Status', width=COLUMN_WIDTHS['Status'])
     gb.configure_column(sv_assignee_col, header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'])
-    # Priority is editable ONLY for open tasks (not completed/closed)
-    priority_editable = JsCode("""
-        function(params) {
-            return params.data._is_open === true;
-        }
-    """)
-    gb.configure_column('CustomerPriority', header_name='CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'], 
-                        editable=priority_editable,
-                        cellStyle=PRIORITY_CELL_STYLE,
-                        cellEditor='agSelectCellEditor',
-                        cellEditorParams={'values': PRIORITY_VALUES})
+    gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS['Subject'], tooltipField='Subject')
+    gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=COLUMN_WIDTHS.get('TicketCreatedDt', 110))
+    gb.configure_column('TaskCreatedDt', header_name='TaskCreatedDt', width=COLUMN_WIDTHS.get('TaskCreatedDt', 110))
     gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'])
+    
+    # Priority is editable ONLY for open tasks AND only for users who can edit (not PBIDS Users)
+    user_can_edit = can_edit_section()
+    if user_can_edit:
+        priority_editable = JsCode("""
+            function(params) {
+                return params.data._is_open === true;
+            }
+        """)
+        gb.configure_column('CustomerPriority', header_name='✏️ CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'], 
+                            editable=priority_editable,
+                            cellStyle=PRIORITY_CELL_STYLE,
+                            cellEditor='agSelectCellEditor',
+                            cellEditorParams={'values': PRIORITY_VALUES})
+    else:
+        # Read-only for PBIDS Users
+        gb.configure_column('CustomerPriority', header_name='CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'], 
+                            cellStyle=PRIORITY_CELL_STYLE)
+    gb.configure_column('FinalPriority', header_name='FinalPriority', width=COLUMN_WIDTHS.get('FinalPriority', 100))
+    gb.configure_column('GoalType', header_name='GoalType', width=COLUMN_WIDTHS.get('GoalType', 90))
+    
+    # Dependency, DependencyLead(s), Comments are editable for Section Manager/User
+    if user_can_edit:
+        # Dependency dropdown values
+        DEPENDENCY_VALUES = ['', 'Yes', 'No']
+        gb.configure_column('DependencyOn', header_name='✏️ Dependency', width=COLUMN_WIDTHS.get('DependencyOn', 110),
+                            editable=priority_editable,
+                            cellEditor='agSelectCellEditor',
+                            cellEditorParams={'values': DEPENDENCY_VALUES})
+        gb.configure_column('DependenciesLead', header_name='✏️ DependencyLead(s)', width=COLUMN_WIDTHS.get('DependenciesLead', 120),
+                            editable=priority_editable,
+                            tooltipField='DependenciesLead',
+                            cellEditor='agLargeTextCellEditor',
+                            cellEditorPopup=True,
+                            cellEditorParams={'maxLength': 1000, 'rows': 5, 'cols': 40})
+        gb.configure_column('Comments', header_name='✏️ Comments', width=COLUMN_WIDTHS['Comments'],
+                            editable=priority_editable,
+                            tooltipField='Comments',
+                            cellEditor='agLargeTextCellEditor',
+                            cellEditorPopup=True,
+                            cellEditorParams={'maxLength': 2000, 'rows': 5, 'cols': 50})
+    else:
+        # Read-only for PBIDS Users
+        gb.configure_column('DependencyOn', header_name='Dependency', width=COLUMN_WIDTHS.get('DependencyOn', 110))
+        gb.configure_column('DependenciesLead', header_name='DependencyLead(s)', width=COLUMN_WIDTHS.get('DependenciesLead', 120),
+                            tooltipField='DependenciesLead')
+        gb.configure_column('Comments', header_name='Comments', width=COLUMN_WIDTHS['Comments'], tooltipField='Comments')
+    gb.configure_column('DependencySecured', header_name='DependencySecured', width=COLUMN_WIDTHS.get('DependencySecured', 130))
     gb.configure_column('HoursEstimated', header_name='HoursEstimated', width=COLUMN_WIDTHS['HoursEstimated'])
-    gb.configure_column('Comments', header_name='Comments', width=COLUMN_WIDTHS['Comments'], tooltipField='Comments')
+    gb.configure_column('TaskHoursSpent', header_name='TaskHoursSpent', width=COLUMN_WIDTHS.get('TaskHoursSpent', 110))
+    gb.configure_column('TicketHoursSpent', header_name='TicketHoursSpent', width=COLUMN_WIDTHS.get('TicketHoursSpent', 120))
     gb.configure_pagination(enabled=False)
     
     grid_options = gb.build()
@@ -196,7 +271,7 @@ if not filtered_df.empty:
     grid_response = AgGrid(
         display_df,
         gridOptions=grid_options,
-        height=get_grid_height(is_fullscreen, 600),
+        height=600,
         theme='streamlit',
         update_mode=GridUpdateMode.VALUE_CHANGED,
         data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
@@ -209,49 +284,65 @@ if not filtered_df.empty:
     # Get edited data
     edited_df = pd.DataFrame(grid_response['data'])
     
-    # Save button for priority changes
+    # Save button for priority changes (only for users who can edit)
     st.divider()
     
-    col_save, col_info = st.columns([1, 3])
-    
-    with col_save:
-        if st.button("💾 Save Priority Changes", type="primary", use_container_width=True):
-            success_count = 0
-            fail_count = 0
-            
-            for idx, row in edited_df.iterrows():
-                unique_id = row.get('UniqueTaskId')
-                if pd.isna(unique_id):
-                    continue
+    if user_can_edit:
+        col_save, col_info = st.columns([1, 3])
+        
+        with col_save:
+            if st.button("💾 Save Changes", type="primary", use_container_width=True):
+                success_count = 0
+                fail_count = 0
                 
-                # Only save if task is open
-                if not row.get('_is_open', True):
-                    continue
-                
-                # Get priority value
-                priority_val = row.get('CustomerPriority')
-                if pd.notna(priority_val):
+                for idx, row in edited_df.iterrows():
+                    unique_id = row.get('UniqueTaskId')
+                    if pd.isna(unique_id):
+                        continue
+                    
+                    # Only save if task is open
+                    if not row.get('_is_open', True):
+                        continue
+                    
                     try:
                         mask = task_store.tasks_df['UniqueTaskId'] == unique_id
                         if mask.any():
-                            task_store.tasks_df.loc[mask, 'CustomerPriority'] = int(priority_val)
+                            # Save CustomerPriority
+                            priority_val = row.get('CustomerPriority')
+                            if pd.notna(priority_val):
+                                task_store.tasks_df.loc[mask, 'CustomerPriority'] = int(priority_val)
+                            
+                            # Save DependencyOn
+                            dep_val = row.get('DependencyOn')
+                            task_store.tasks_df.loc[mask, 'DependencyOn'] = dep_val if pd.notna(dep_val) else ''
+                            
+                            # Save DependenciesLead
+                            dep_lead_val = row.get('DependenciesLead')
+                            task_store.tasks_df.loc[mask, 'DependenciesLead'] = dep_lead_val if pd.notna(dep_lead_val) else ''
+                            
+                            # Save Comments
+                            comments_val = row.get('Comments')
+                            task_store.tasks_df.loc[mask, 'Comments'] = comments_val if pd.notna(comments_val) else ''
+                            
                             success_count += 1
                     except Exception as e:
                         fail_count += 1
-            
-            if success_count > 0:
-                if task_store.save():
-                    st.success(f"✅ Updated priority for {success_count} task(s)")
-                    st.rerun()
+                
+                if success_count > 0:
+                    if task_store.save():
+                        st.success(f"✅ Updated {success_count} task(s)")
+                        st.rerun()
+                    else:
+                        st.error("❌ Failed to save changes")
+                elif fail_count > 0:
+                    st.warning(f"⚠️ Failed to update {fail_count} task(s)")
                 else:
-                    st.error("❌ Failed to save changes")
-            elif fail_count > 0:
-                st.warning(f"⚠️ Failed to update {fail_count} task(s)")
-            else:
-                st.info("No changes to save")
-    
-    with col_info:
-        st.caption("Priority: 0=Not needed, 1=Lowest, 5=Highest. Only open tasks can be edited.")
+                    st.info("No changes to save")
+        
+        with col_info:
+            st.caption("Editable fields: CustomerPriority, Dependency, DependencyLead(s), Comments. Only open tasks can be edited.")
+    else:
+        st.caption("🔒 **Read-only view** - PBIDS Users cannot edit task data.")
     
     # Export section - exports current filtered view
     col_export1, col_export2 = st.columns([2, 6])
@@ -265,7 +356,9 @@ if not filtered_df.empty:
         
         from datetime import datetime
         excel_data = export_to_excel(export_df, sheet_name="Section View")
-        section_name = user_section.replace(' ', '_') if user_section else "all"
+        # Use display_sections for filename (defined earlier based on admin selection or user sections)
+        section_name = "_".join(display_sections).replace(' ', '_') if display_sections else "all"
+        section_name = section_name[:50]  # Limit filename length
         filename = f"section_view_{section_name}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
         
         st.download_button(
@@ -346,8 +439,10 @@ if len(at_risk_df) > 0:
 
 # Help section
 with st.expander("About This View"):
+    section_display = ", ".join(display_sections) if display_sections else "All Sections"
+    viewing_msg = "Viewing all sections (Admin mode)" if user_role == 'Admin' and len(display_sections) > 1 else f"Viewing tasks for **{section_display}**"
     st.markdown(f"""
-    {'Viewing all sections (Admin mode)' if user_role == 'Admin' and not user_section else f'Viewing tasks for **{user_section}**'}
+    {viewing_msg}
     
     This is a read-only view. Use column filters in the table to narrow results. Export buttons available for offline analysis.
     

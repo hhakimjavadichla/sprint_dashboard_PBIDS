@@ -9,6 +9,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from modules.sprint_calendar import get_sprint_calendar
 from modules.user_store import get_user_store, reset_user_store, VALID_ROLES
+from modules.offdays_store import get_offdays_store, reset_offdays_store
 from components.auth import require_admin, display_user_info
 from utils.constants import VALID_SECTIONS
 
@@ -29,14 +30,14 @@ require_admin("Admin Configuration")
 display_user_info()
 
 # Tabs for different configuration sections
-tab1, tab2, tab3 = st.tabs(["📅 Sprint Calendar", "👥 User Management", "🧑‍💼 Team Members"])
+tab1, tab2, tab3, tab4 = st.tabs(["📅 Sprint Calendar", "👥 User Management", "🧑‍💼 Team Members", "🏖️ Off Days"])
 
 # ============================================================================
 # SPRINT CALENDAR MANAGEMENT
 # ============================================================================
 with tab1:
     st.subheader("📅 Sprint Calendar Configuration")
-    st.caption("Add, edit, or delete sprints")
+    st.caption("Add or edit sprints")
     
     calendar = get_sprint_calendar()
     all_sprints = calendar.get_all_sprints()
@@ -158,27 +159,13 @@ with tab1:
                         st.success(f"✅ Sprint {sprint_to_edit} updated!")
                         st.rerun()
             
-            with col2:
-                if st.button("🗑️ Delete Sprint", key="delete_sprint", type="secondary"):
-                    # Check if sprint has tasks
-                    from modules.task_store import get_task_store
-                    task_store = get_task_store()
-                    sprint_tasks = task_store.get_sprint_tasks(sprint_to_edit)
-                    
-                    if not sprint_tasks.empty:
-                        st.error(f"Cannot delete Sprint {sprint_to_edit} - it has {len(sprint_tasks)} tasks assigned")
-                    else:
-                        all_sprints = all_sprints[all_sprints['SprintNumber'] != sprint_to_edit]
-                        all_sprints.to_csv(calendar.calendar_path, index=False)
-                        st.success(f"✅ Sprint {sprint_to_edit} deleted!")
-                        st.rerun()
 
 # ============================================================================
 # USER MANAGEMENT
 # ============================================================================
 with tab2:
     st.subheader("👥 User Management")
-    st.caption("Add, edit, or delete user accounts")
+    st.caption("Add or edit user accounts")
     
     user_store = get_user_store()
     all_users = user_store.get_all_users()
@@ -189,8 +176,17 @@ with tab2:
     if all_users.empty:
         st.info("No users defined yet")
     else:
+        # Format Active column for display
+        display_users = all_users.copy()
+        if 'Active' in display_users.columns:
+            display_users['Status'] = display_users['Active'].apply(
+                lambda x: '✅ Active' if (x == True or x == 'True') else '❌ Inactive'
+            )
+        else:
+            display_users['Status'] = '✅ Active'
+        
         st.dataframe(
-            all_users[['Username', 'DisplayName', 'Role', 'Section', 'Password']],
+            display_users[['Username', 'DisplayName', 'Role', 'Section', 'Status']],
             use_container_width=True,
             hide_index=True,
             column_config={
@@ -198,7 +194,7 @@ with tab2:
                 'DisplayName': 'Display Name',
                 'Role': 'Role',
                 'Section': 'Section',
-                'Password': 'Password'
+                'Status': 'Status'
             }
         )
     
@@ -220,10 +216,10 @@ with tab2:
         
         # Multi-select dropdown for sections
         new_sections = st.multiselect(
-            "Sections (for Section Users)", 
+            "Sections (for Section Managers/Users)", 
             options=VALID_SECTIONS,
             key="new_sections",
-            help="Select one or more sections this user can monitor and edit"
+            help="Select one or more sections this user can monitor and edit (required for Section Manager/User roles)"
         )
         new_section = ','.join(new_sections) if new_sections else ''
     
@@ -234,8 +230,8 @@ with tab2:
             st.error("Password is required")
         elif new_password != new_password_confirm:
             st.error("Passwords do not match")
-        elif new_role == 'Section User' and not new_sections:
-            st.error("At least one section is required for Section Users")
+        elif new_role in ['Section Manager', 'Section User'] and not new_sections:
+            st.error("At least one section is required for Section Manager/User roles")
         else:
             success, message = user_store.add_user(
                 username=new_username,
@@ -271,16 +267,16 @@ with tab2:
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    st.text_input("Username", value=user_to_edit, disabled=True, key="edit_username_display")
+                    st.text_input("Username", value=user_to_edit, disabled=True, key=f"edit_username_{user_to_edit}")
                     edit_password = st.text_input(
                         "New Password (leave blank to keep current)", 
                         type="password", 
-                        key="edit_password"
+                        key=f"edit_password_{user_to_edit}"
                     )
                     edit_display_name = st.text_input(
                         "Display Name", 
                         value=user_data['display_name'], 
-                        key="edit_display_name"
+                        key=f"edit_display_name_{user_to_edit}"
                     )
                 
                 with col2:
@@ -288,7 +284,7 @@ with tab2:
                         "Role", 
                         options=VALID_ROLES, 
                         index=VALID_ROLES.index(user_data['role']) if user_data['role'] in VALID_ROLES else 0,
-                        key="edit_role"
+                        key=f"edit_role_{user_to_edit}"
                     )
                     # Parse existing sections (comma-separated)
                     current_sections = [s.strip() for s in (user_data['section'] or '').split(',') if s.strip()]
@@ -296,11 +292,11 @@ with tab2:
                     current_sections = [s for s in current_sections if s in VALID_SECTIONS]
                     
                     edit_sections = st.multiselect(
-                        "Sections", 
+                        "Sections (for Section Managers/Users)", 
                         options=VALID_SECTIONS,
                         default=current_sections,
-                        key="edit_sections",
-                        help="Select one or more sections this user can monitor and edit"
+                        key=f"edit_sections_{user_to_edit}",
+                        help="Select one or more sections this user can monitor and edit (required for Section Manager/User roles)"
                     )
                     edit_section = ','.join(edit_sections) if edit_sections else ''
                 
@@ -308,29 +304,17 @@ with tab2:
                 
                 with col1:
                     if st.button("💾 Save Changes", key="save_user"):
-                        success, message = user_store.update_user(
-                            username=user_to_edit,
-                            password=edit_password if edit_password else None,
-                            role=edit_role,
-                            section=edit_section,
-                            display_name=edit_display_name
-                        )
-                        
-                        if success:
-                            st.success(f"✅ {message}")
-                            reset_user_store()
-                            st.rerun()
+                        # Validate sections for Section Manager/User roles
+                        if edit_role in ['Section Manager', 'Section User'] and not edit_sections:
+                            st.error("At least one section is required for Section Manager/User roles")
                         else:
-                            st.error(f"❌ {message}")
-                
-                with col2:
-                    # Don't allow deleting yourself
-                    current_user = st.session_state.get('username')
-                    if user_to_edit == current_user:
-                        st.button("🗑️ Delete User", disabled=True, help="Cannot delete your own account")
-                    else:
-                        if st.button("🗑️ Delete User", key="delete_user", type="secondary"):
-                            success, message = user_store.delete_user(user_to_edit)
+                            success, message = user_store.update_user(
+                                username=user_to_edit,
+                                password=edit_password if edit_password else None,
+                                role=edit_role,
+                                section=edit_section,
+                                display_name=edit_display_name
+                            )
                             
                             if success:
                                 st.success(f"✅ {message}")
@@ -338,6 +322,44 @@ with tab2:
                                 st.rerun()
                             else:
                                 st.error(f"❌ {message}")
+                
+                # Activate/Deactivate user
+                current_user = st.session_state.get('username')
+                st.divider()
+                
+                # Get current active status
+                user_active = all_users[all_users['Username'] == user_to_edit]['Active'].iloc[0]
+                if isinstance(user_active, str):
+                    user_active = user_active.lower() == 'true'
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if user_to_edit == current_user:
+                        st.info("Cannot change your own account status")
+                    elif user_active:
+                        if st.button("🚫 Deactivate User", key="deactivate_user", type="secondary"):
+                            success, message = user_store.set_user_active(user_to_edit, False)
+                            if success:
+                                st.success(f"✅ {message}")
+                                reset_user_store()
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {message}")
+                    else:
+                        if st.button("✅ Activate User", key="activate_user", type="primary"):
+                            success, message = user_store.set_user_active(user_to_edit, True)
+                            if success:
+                                st.success(f"✅ {message}")
+                                reset_user_store()
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {message}")
+                
+                with col2:
+                    if user_active:
+                        st.caption("User can log in")
+                    else:
+                        st.caption("⚠️ User cannot log in (inactive)")
 
 # ============================================================================
 # TEAM MEMBERS MANAGEMENT
@@ -363,18 +385,21 @@ with tab3:
     
     # Get current team members and name mappings
     team_members = config.get('team_members', {}).get('valid_team_members', [])
+    inactive_members = config.get('team_members', {}).get('inactive_team_members', [])
     name_mapping = config.get('name_mapping', {})
     
     # Create DataFrame for display
     team_data = []
     for username in team_members:
         display_name = name_mapping.get(username, '')
+        is_active = username not in inactive_members
         team_data.append({
             'Username': username,
-            'Display Name': display_name
+            'Display Name': display_name,
+            'Active': is_active
         })
     
-    team_df = pd.DataFrame(team_data) if team_data else pd.DataFrame(columns=['Username', 'Display Name'])
+    team_df = pd.DataFrame(team_data) if team_data else pd.DataFrame(columns=['Username', 'Display Name', 'Active'])
     
     # Current team members table
     st.markdown("### Current Team Members")
@@ -389,7 +414,8 @@ with tab3:
             hide_index=True,
             column_config={
                 'Username': st.column_config.TextColumn('Username (iTrack Account)', width='medium'),
-                'Display Name': st.column_config.TextColumn('Display Name', width='large')
+                'Display Name': st.column_config.TextColumn('Display Name', width='large'),
+                'Active': st.column_config.CheckboxColumn('Active', width='small')
             }
         )
     
@@ -437,36 +463,42 @@ with tab3:
     
     st.divider()
     
-    # Remove team member
-    st.markdown("### 🗑️ Remove Team Member")
+    # Activate/Deactivate team member
+    st.markdown("### 🔄 Activate/Deactivate Team Member")
     
     if team_members:
+        # Get inactive members list
+        inactive_members = config.get('team_members', {}).get('inactive_team_members', [])
+        
         col1, col2 = st.columns([3, 1])
         
         with col1:
-            member_to_remove = st.selectbox(
-                "Select Team Member to Remove",
+            member_to_toggle = st.selectbox(
+                "Select Team Member",
                 options=team_members,
-                format_func=lambda x: f"{x} ({name_mapping.get(x, 'No display name')})"
+                format_func=lambda x: f"{x} ({name_mapping.get(x, 'No display name')}) - {'Inactive' if x in inactive_members else 'Active'}"
             )
         
         with col2:
             st.write("")  # Spacing
             st.write("")  # Spacing
-            if st.button("🗑️ Remove", key="remove_member", type="secondary"):
-                # Remove from team members list
-                team_members.remove(member_to_remove)
-                config['team_members']['valid_team_members'] = team_members
-                
-                # Remove name mapping if exists
-                if member_to_remove in config.get('name_mapping', {}):
-                    del config['name_mapping'][member_to_remove]
-                
-                save_itrack_config(config)
-                st.success(f"✅ Team member '{member_to_remove}' removed!")
-                st.rerun()
+            is_inactive = member_to_toggle in inactive_members
+            if is_inactive:
+                if st.button("✅ Activate", key="activate_member", type="primary"):
+                    inactive_members.remove(member_to_toggle)
+                    config['team_members']['inactive_team_members'] = inactive_members
+                    save_itrack_config(config)
+                    st.success(f"✅ Team member '{member_to_toggle}' activated!")
+                    st.rerun()
+            else:
+                if st.button("🚫 Deactivate", key="deactivate_member", type="secondary"):
+                    inactive_members.append(member_to_toggle)
+                    config['team_members']['inactive_team_members'] = inactive_members
+                    save_itrack_config(config)
+                    st.success(f"✅ Team member '{member_to_toggle}' deactivated!")
+                    st.rerun()
     else:
-        st.info("No team members to remove.")
+        st.info("No team members available.")
     
     st.divider()
     
@@ -508,6 +540,196 @@ with tab3:
     else:
         st.info("No team members to edit.")
 
+# ============================================================================
+# OFF DAYS MANAGEMENT
+# ============================================================================
+with tab4:
+    st.subheader("🏖️ Team Member Off Days")
+    st.caption("Configure off days for team members during sprints")
+    
+    # Load data
+    offdays_store = get_offdays_store()
+    calendar = get_sprint_calendar()
+    all_sprints = calendar.get_all_sprints()
+    
+    # Load team members from itrack config
+    def load_team_members_for_offdays():
+        if ITRACK_MAPPING_PATH.exists():
+            with open(ITRACK_MAPPING_PATH, 'r') as f:
+                config = toml.load(f)
+            members = config.get('team_members', {}).get('valid_team_members', [])
+            inactive = config.get('team_members', {}).get('inactive_team_members', [])
+            name_mapping = config.get('name_mapping', {})
+            # Only return active members
+            active_members = [m for m in members if m not in inactive]
+            return active_members, name_mapping
+        return [], {}
+    
+    team_members, name_mapping = load_team_members_for_offdays()
+    
+    if all_sprints.empty:
+        st.warning("No sprints configured. Please add sprints first.")
+    elif not team_members:
+        st.warning("No active team members. Please add team members first.")
+    else:
+        # Sprint selector
+        sprint_options = all_sprints['SprintNumber'].tolist()
+        current_sprint = calendar.get_current_sprint()
+        default_sprint_idx = 0
+        if current_sprint is not None:
+            try:
+                default_sprint_idx = sprint_options.index(int(current_sprint['SprintNumber']))
+            except ValueError:
+                pass
+        
+        selected_sprint = st.selectbox(
+            "Select Sprint",
+            options=sprint_options,
+            index=default_sprint_idx,
+            format_func=lambda x: f"Sprint {x} ({all_sprints[all_sprints['SprintNumber']==x]['SprintName'].iloc[0]})"
+        )
+        
+        # Get sprint date range
+        sprint_info = calendar.get_sprint_by_number(selected_sprint)
+        if sprint_info:
+            sprint_start = pd.to_datetime(sprint_info['SprintStartDt'])
+            sprint_end = pd.to_datetime(sprint_info['SprintEndDt'])
+            st.info(f"**Sprint {selected_sprint}**: {sprint_info['SprintStartDt']} - {sprint_info['SprintEndDt']}")
+            
+            # Generate list of dates in the sprint (weekdays only)
+            sprint_dates = pd.date_range(start=sprint_start, end=sprint_end, freq='B')  # Business days
+            sprint_date_strs = [d.strftime('%Y-%m-%d') for d in sprint_dates]
+        
+        st.divider()
+        
+        # Availability Grid - checkbox table
+        st.markdown("### 📅 Team Availability Grid")
+        st.caption("✅ = Working day (checked) | ⬜ = Off day (unchecked). Uncheck dates when team members are off.")
+        
+        if sprint_info and sprint_date_strs:
+            # Get current off days for this sprint
+            sprint_offdays = offdays_store.get_offdays_for_sprint(selected_sprint)
+            current_offdays = {}
+            for _, row in sprint_offdays.iterrows():
+                username = row['Username']
+                off_date = row['OffDate']
+                if username not in current_offdays:
+                    current_offdays[username] = set()
+                current_offdays[username].add(off_date)
+            
+            # Build availability grid data
+            # Rows = team members, Columns = dates
+            # True = working (available), False = off day
+            grid_data = []
+            for member in team_members:
+                display_name = name_mapping.get(member, member)
+                row_data = {'Team Member': display_name, '_username': member}
+                member_offdays = current_offdays.get(member, set())
+                for date_str in sprint_date_strs:
+                    # Column name is formatted date
+                    col_name = pd.to_datetime(date_str).strftime('%m/%d\n%a')
+                    # True if NOT an off day (working), False if off day
+                    row_data[col_name] = date_str not in member_offdays
+                grid_data.append(row_data)
+            
+            grid_df = pd.DataFrame(grid_data)
+            
+            # Create column config for checkboxes
+            date_columns = [c for c in grid_df.columns if c not in ['Team Member', '_username']]
+            column_config = {
+                'Team Member': st.column_config.TextColumn('Team Member', width='medium', disabled=True),
+                '_username': None  # Hide username column
+            }
+            for col in date_columns:
+                column_config[col] = st.column_config.CheckboxColumn(col, width='small')
+            
+            # Display editable grid
+            edited_grid = st.data_editor(
+                grid_df,
+                column_config=column_config,
+                use_container_width=True,
+                hide_index=True,
+                key=f"offdays_grid_{selected_sprint}"
+            )
+            
+            # Save button
+            if st.button("💾 Save Availability Changes", type="primary", key="save_offdays"):
+                admin_user = st.session_state.get('username', 'admin')
+                changes_made = 0
+                
+                for idx, row in edited_grid.iterrows():
+                    username = row['_username']
+                    member_offdays = current_offdays.get(username, set())
+                    
+                    for date_str in sprint_date_strs:
+                        col_name = pd.to_datetime(date_str).strftime('%m/%d\n%a')
+                        is_working = row[col_name]
+                        was_off = date_str in member_offdays
+                        
+                        if is_working and was_off:
+                            # Was off, now working - remove off day
+                            offdays_store.remove_offday(username, selected_sprint, date_str)
+                            changes_made += 1
+                        elif not is_working and not was_off:
+                            # Was working, now off - add off day
+                            offdays_store.add_offday(
+                                username=username,
+                                sprint_number=selected_sprint,
+                                off_date=date_str,
+                                reason='',
+                                created_by=admin_user
+                            )
+                            changes_made += 1
+                
+                if changes_made > 0:
+                    reset_offdays_store()
+                    st.success(f"✅ Saved {changes_made} availability change(s)")
+                    st.rerun()
+                else:
+                    st.info("No changes to save")
+        
+        # Summary by team member
+        st.divider()
+        st.markdown(f"### 📊 Off Days Summary for Sprint {selected_sprint}")
+        
+        if sprint_info:
+            total_business_days = len(sprint_date_strs) if sprint_date_strs else 0
+            
+            summary_data = []
+            for member in team_members:
+                display_name = name_mapping.get(member, member)
+                off_count = offdays_store.get_offday_count(member, selected_sprint)
+                available_days = total_business_days - off_count
+                available_hours = available_days * 8  # Assuming 8 hours per day
+                
+                summary_data.append({
+                    'Username': member,
+                    'Display Name': display_name,
+                    'Total Days': total_business_days,
+                    'Off Days': off_count,
+                    'Available Days': available_days,
+                    'Available Hours': available_hours
+                })
+            
+            summary_df = pd.DataFrame(summary_data)
+            
+            # Only show members with off days or show all
+            show_all = st.checkbox("Show all team members", value=False)
+            if not show_all:
+                summary_df = summary_df[summary_df['Off Days'] > 0]
+            
+            if summary_df.empty:
+                st.info("No off days configured for any team member in this sprint.")
+            else:
+                st.dataframe(
+                    summary_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        'Available Hours': st.column_config.NumberColumn('Available Hours', format='%.0f hrs')
+                    }
+                )
+
 # Footer
 st.divider()
-st.caption("💡 **Note:** Changes to sprint calendar, user accounts, and team members take effect immediately.")
+st.caption("💡 **Note:** Changes to sprint calendar, user accounts, team members, and off days take effect immediately.")

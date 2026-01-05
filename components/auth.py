@@ -20,7 +20,7 @@ def get_user_role() -> Optional[str]:
     Get current user's role
     
     Returns:
-        User role ('Admin' or 'Section User') or None
+        User role ('Admin', 'PBIDS User', 'Section Manager', or 'Section User') or None
     """
     return st.session_state.get('user_role')
 
@@ -43,6 +43,50 @@ def is_admin() -> bool:
         True if user is admin
     """
     return get_user_role() == 'Admin'
+
+
+def is_pbids_user() -> bool:
+    """
+    Check if current user is a PBIDS User (read-only access)
+    
+    Returns:
+        True if user is PBIDS User
+    """
+    return get_user_role() == 'PBIDS User'
+
+
+def is_section_manager() -> bool:
+    """
+    Check if current user is a Section Manager
+    
+    Returns:
+        True if user is Section Manager
+    """
+    return get_user_role() == 'Section Manager'
+
+
+def is_section_user() -> bool:
+    """
+    Check if current user is a Section User
+    
+    Returns:
+        True if user is Section User
+    """
+    return get_user_role() == 'Section User'
+
+
+def can_edit_section() -> bool:
+    """
+    Check if current user can edit section data (CustomerPriority, etc.)
+    Section Managers and Section Users can edit their section data.
+    Admins can edit all sections.
+    PBIDS Users cannot edit.
+    
+    Returns:
+        True if user can edit section data
+    """
+    role = get_user_role()
+    return role in ['Admin', 'Section Manager', 'Section User']
 
 
 def login(username: str, password: str) -> Tuple[bool, str]:
@@ -70,6 +114,10 @@ def login(username: str, password: str) -> Tuple[bool, str]:
             st.session_state.user_section = user_info['section']
             st.session_state.display_name = user_info['display_name']
             return True, ""
+        
+        # Check if user is inactive
+        if user_info and user_info.get('error') == 'inactive':
+            return False, user_info.get('message', 'Account is inactive')
         
         # Fall back to secrets (for backward compatibility)
         credentials = st.secrets.get('credentials', {})

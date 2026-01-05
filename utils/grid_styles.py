@@ -155,6 +155,29 @@ def apply_grid_styles():
         word-wrap: break-word !important;
     }
     
+    /* AgGrid horizontal scroll bar */
+    .ag-body-horizontal-scroll {
+        display: block !important;
+        height: 12px !important;
+    }
+    
+    .ag-body-horizontal-scroll-viewport {
+        overflow-x: scroll !important;
+    }
+    
+    .ag-horizontal-scroll-viewport::-webkit-scrollbar {
+        height: 12px !important;
+    }
+    
+    .ag-horizontal-scroll-viewport::-webkit-scrollbar-thumb {
+        background-color: #888 !important;
+        border-radius: 6px !important;
+    }
+    
+    .ag-horizontal-scroll-viewport::-webkit-scrollbar-track {
+        background-color: #f1f1f1 !important;
+    }
+    
     /* Prototype banner - subtle */
     div[data-testid="stCaptionContainer"] {
         margin-bottom: 0.5rem !important;
