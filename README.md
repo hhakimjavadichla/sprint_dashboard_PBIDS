@@ -1,21 +1,43 @@
 # PBIDS Sprint Dashboard
 
-**Version 0.3.0** — Developed by the PIBIDS Team
+**Version 1.0** — Developed by the PIBIDS Team
 
 A sprint management dashboard for workflow tracking. Imports task data from iTrack, manages sprint assignments through Work Backlogs, tracks capacity with Goal Type planning, and provides TAT-based priority monitoring.
 
 ## Features
 
-- **Work Backlogs** — Central hub for all open tasks; admin assigns tasks to sprints
+### Core Features
+- **Work Backlogs & Sprint Assignment** — Central hub for all open tasks; admin assigns tasks to sprints
 - **Sprint Assignment Tracking** — `SprintsAssigned` column tracks all sprint assignments per task
+- **Automatic Carryover** — Open tasks automatically carry over to next sprint
 - **Goal Type Planning** — Mandatory (60% capacity) vs Stretch (20% capacity) goals
 - **Capacity Management** — Per-person limits: 48 hrs Mandatory, 16 hrs Stretch, 80 hrs Total
 - **TAT Monitoring** — IR escalation at 0.8 days, SR at 22 days, at-risk warnings at 75%
-- **Role-Based Access** — Admin (full control) and Section User (read-only)
+
+### Role-Based Access (4 User Roles)
+- **Admin** — Full access to all features
+- **PBIDS User** — Read-only view of all sections
+- **Section Manager** — Edit tasks in assigned sections, submit sprint feedback
+- **Section User** — Edit tasks in assigned sections
+
+### Sprint Feedback System
+- Section Managers submit feedback for completed sprints
+- Questions: Overall Satisfaction (1-5), What went well, What did not go well
+- One submission per section per sprint
+- View previous feedback history
+
+### Off Days Configuration
+- Configure team member availability during sprints
+- Interactive checkbox grid (team members × sprint dates)
+- Off days highlighted in Worklog Activity reports
+- Affects capacity calculations
+
+### Additional Features
 - **Forever Ticket Exclusion** — Automatically excludes Standing Meetings and Miscellaneous Meetings
 - **Team Member Filtering** — Filter tasks to show only configured team members
 - **Color-Coded Tables** — Visual indicators for Status, Priority, Days Open, and Task Origin
-- **Standardized Ticket Types** — Incident Request (IR), Service Request (SR), Project Request (PR), Not Classified (NC)
+- **Standardized Ticket Types** — IR (Incident Request), SR (Service Request), PR (Problem), NC (Non-classified IS Requests), AD (Admin Request)
+- **Worklog Activity Reports** — Track team member daily activity with off day/weekend highlighting
 
 ## Quick Start
 
@@ -66,42 +88,58 @@ The dashboard will open in your browser at `http://localhost:8501`
 ## Project Structure
 
 ```
-sprint_dashboard/
-├── app.py                      # Main application entry point
-├── requirements.txt            # Python dependencies
+sprint_dashboard_PBIDS/
+├── app.py                           # Main application entry point
+├── requirements.txt                 # Python dependencies
 ├── .streamlit/
-│   ├── config.toml            # Streamlit configuration
-│   └── secrets.toml           # Authentication credentials
-├── pages/                     # Streamlit pages
-│   ├── 1_📊_Dashboard.py      # Admin master dashboard
-│   ├── 2_➕_New_Sprint.py     # Sprint generation
-│   ├── 3_✏️_Plan_Sprint.py    # Effort estimation & planning
-│   ├── 4_👥_Section_View.py   # Lab section filtered view
-│   └── 5_📈_Analytics.py      # Charts and insights
-├── modules/                   # Core business logic
-│   ├── data_loader.py         # CSV import/export
-│   ├── sprint_generator.py    # Sprint creation logic
-│   ├── tat_calculator.py      # TAT escalation
-│   ├── capacity_validator.py  # Workload validation
-│   └── section_filter.py      # Section filtering
-├── models/                    # Data models
-│   ├── task.py               # Task model with validation
-│   ├── sprint.py             # Sprint model
-│   └── validation.py         # Data validation
-├── utils/                     # Utility functions
-│   ├── constants.py          # Configuration constants
-│   ├── date_utils.py         # Date manipulation
-│   ├── formatters.py         # Display formatting
-│   └── exporters.py          # Export utilities
-├── components/                # Reusable UI components
-│   ├── auth.py               # Authentication
-│   ├── metrics_dashboard.py  # Metrics widgets
-│   ├── capacity_widget.py    # Capacity display
-│   └── at_risk_widget.py     # At-risk tasks widget
-└── data/                      # Data directory
-    ├── current_sprint.csv     # Active sprint
-    ├── past_sprints.csv       # Sprint archive
-    └── itrack_extract.csv     # Latest iTrack import
+│   ├── config.toml                 # Streamlit configuration
+│   ├── secrets.toml                # Authentication credentials
+│   ├── itrack_mapping.toml         # Team member & name mapping
+│   ├── sections.toml               # Valid lab sections
+│   └── column_descriptions.toml    # Column help text
+├── pages/                          # Streamlit pages
+│   ├── 1_📊_Dashboard.py           # Admin master dashboard
+│   ├── 2_📤_Upload_Tasks.py        # iTrack CSV import
+│   ├── 3_📋_Sprint_View.py         # Sprint task view & status updates
+│   ├── 4_👥_Section_View.py        # Section filtered view with editing
+│   ├── 5_📈_Analytics.py           # Charts and insights
+│   ├── 6_✅_Completed_Tasks.py     # Historical completed tasks
+│   ├── 7_✏️_Sprint_Planning.py     # Effort estimation & planning
+│   ├── 8_📋_Work_Backlogs.py       # Open tasks & sprint assignment
+│   ├── 9_📊_Worklog_Activity.py    # Team activity reports
+│   ├── 10_⚙️_Admin_Config.py       # Sprint calendar, users, team, off days
+│   └── 11_💬_Sprint_Feedback.py    # Sprint feedback submission
+├── modules/                        # Core business logic
+│   ├── data_loader.py              # CSV import/export
+│   ├── task_store.py               # Task data management
+│   ├── worklog_store.py            # Worklog data management
+│   ├── user_store.py               # User authentication & management
+│   ├── sprint_calendar.py          # Sprint calendar management
+│   ├── feedback_store.py           # Sprint feedback storage
+│   ├── offdays_store.py            # Off days configuration
+│   ├── tat_calculator.py           # TAT escalation
+│   ├── capacity_validator.py       # Workload validation
+│   └── section_filter.py           # Section filtering
+├── models/                         # Data models
+│   └── task.py                     # Task model with validation
+├── utils/                          # Utility functions
+│   ├── constants.py                # Configuration constants
+│   ├── grid_styles.py              # Table styling & colors
+│   ├── name_mapper.py              # Display name mapping
+│   └── exporters.py                # Export utilities
+├── components/                     # Reusable UI components
+│   ├── auth.py                     # Authentication & role checking
+│   ├── metrics_dashboard.py        # Metrics widgets
+│   └── at_risk_widget.py           # At-risk tasks widget
+├── data/                           # Data directory (CSV storage)
+│   ├── tasks.csv                   # All tasks
+│   ├── worklogs.csv                # Worklog entries
+│   ├── users.csv                   # User accounts
+│   ├── sprint_calendar.csv         # Sprint definitions
+│   ├── feedback.csv                # Sprint feedback
+│   └── offdays.csv                 # Off day configurations
+└── docs/                           # Documentation
+    └── PBIDS_Sprint_Dashboard_System_Requirements_v1.0_2026-01-05.md
 ```
 
 ## Core Concepts
@@ -204,17 +242,21 @@ TAT_SR_DAYS = 22                # SR escalation threshold
 ```
 
 ### User Management
-Edit `.streamlit/secrets.toml`:
-```toml
-[credentials]
-username = "password"
 
-[user_roles]
-username = "Admin"  # or "Section User"
+Users are managed via Admin Config → User Management tab. User accounts are stored in `data/users.csv`.
 
-[user_sections]
-username = "Core Lab"  # Only for Section Users
-```
+**User Roles:**
+| Role | Description |
+|------|-------------|
+| Admin | Full access to all features |
+| PBIDS User | Read-only view of all sections |
+| Section Manager | Edit tasks in assigned sections, submit feedback |
+| Section User | Edit tasks in assigned sections |
+
+**Notes:**
+- Section Manager and Section User roles require at least one section assigned
+- Users can be activated/deactivated but not deleted
+- Cannot deactivate the last active Admin user
 
 ## Data Schema
 
@@ -349,24 +391,53 @@ Internal use only — PBIDS Team
 
 ## Version
 
-**v0.3.0** — December 19, 2024
+**v1.0** — January 5, 2026
 
-### What's New in v0.3.0
-- **Work Backlogs** — Replaced Pre-Sprint Queue; all open tasks appear here
-- **SprintsAssigned Column** — Tracks all sprint assignments per task (comma-separated)
-- **No Automatic Carryover** — Admin must explicitly assign tasks to each sprint
-- **Goal Type** — Mandatory vs Stretch goals with capacity limits
-- **Capacity Summary** — Per-person breakdown: Mandatory (48 hrs), Stretch (16 hrs), Total (80 hrs)
-- **Assignment Validation** — Cannot assign task to sprint older than creation sprint
+### What's New in v1.0
+
+#### New Features
+- **Enhanced User Roles** — 4 role types: Admin, PBIDS User, Section Manager, Section User
+- **Sprint Feedback System** — Section Managers submit feedback for completed sprints
+- **Off Days Configuration** — Interactive checkbox grid for team member availability
+- **Off Day Highlighting** — Worklog Activity shows off days (red) and weekends (purple)
+
+#### User Management Improvements
+- Users can be activated/deactivated (not deleted)
+- Team members can be activated/deactivated (not deleted)
+- Edit user form pre-populates current values
+- Section Manager/User roles require section assignment
+
+#### Section View Enhancements
+- Section Manager/User can edit: CustomerPriority, Dependency, DependencyLead(s), Comments
+- PBIDS Users see read-only view with appropriate message
+- Editable columns marked with pencil icon (✏️)
+
+#### UI/UX Improvements
+- Renamed "Work Backlogs" → "Work Backlogs & Sprint Assignment"
+- Renamed "DependenciesLead" → "DependencyLead(s)"
+- Renamed "DependencyOn" → "Dependency"
+- Updated ticket type descriptions (NC = Non-classified IS Requests, IR = Incident Request, AD = Admin Request)
+- GoalType default changed from 'n' to blank
+- Removed 'NA' option from DependencySecured
+- Removed Delete Sprint/Delete User functionality
+- Worklog Activity Ticket Type filter supports multiple selections
+
+#### Documentation
+- Added comprehensive system requirements document (`docs/`)
 
 ### Previous Versions
+
+**v0.3.0** — December 19, 2024
+- Work Backlogs replaced Pre-Sprint Queue
+- SprintsAssigned column tracks all sprint assignments
+- Goal Type (Mandatory vs Stretch) with capacity limits
+- Capacity Summary per-person breakdown
 
 **v0.2.0** — December 15, 2024
 - Forever ticket exclusion (Standing Meetings, Miscellaneous Meetings)
 - Team member filtering via configuration
-- Editable Status and Section in Plan Sprint page
 - Color-coded Status, Priority, and Days Open columns
-- Standardized ticket type labels (IR, SR, PR, NC)
+- Standardized ticket type labels
 
 **v0.1.0** — Initial release
 
