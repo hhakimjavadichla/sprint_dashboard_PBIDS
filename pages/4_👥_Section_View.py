@@ -31,17 +31,14 @@ require_auth("Section View")
 # Display user info
 display_user_info()
 
-# Load data from task store
+# Load data from task store - get ALL open tasks (not just sprint-assigned)
+# This allows section users to set CustomerPriority before admin assigns to a sprint
 task_store = get_task_store()
-sprint_df = task_store.get_current_sprint_tasks()
-
-# Filter to only open tasks (exclude completed/closed)
-if sprint_df is not None and not sprint_df.empty and 'Status' in sprint_df.columns:
-    sprint_df = sprint_df[~sprint_df['Status'].isin(CLOSED_STATUSES)].copy()
+sprint_df = task_store.get_backlog_tasks()
 
 if sprint_df is None or sprint_df.empty:
-    st.warning("⚠️ No active sprint found")
-    st.info("No sprint data available. Please contact an administrator.")
+    st.warning("⚠️ No open tasks found")
+    st.info("No open tasks available. Please contact an administrator.")
     st.stop()
 
 # Get user's section
@@ -441,10 +438,22 @@ if len(at_risk_df) > 0:
 with st.expander("About This View"):
     section_display = ", ".join(display_sections) if display_sections else "All Sections"
     viewing_msg = "Viewing all sections (Admin mode)" if user_role == 'Admin' and len(display_sections) > 1 else f"Viewing tasks for **{section_display}**"
+    
+    if is_pbids_user():
+        edit_msg = "This is a read-only view."
+    elif is_admin() or user_role in ['Section Manager', 'Section User']:
+        edit_msg = "You can edit **CustomerPriority**, **Dependency**, **DependencyLead(s)**, and **Comments** for open tasks."
+    else:
+        edit_msg = "This is a read-only view."
+    
     st.markdown(f"""
     {viewing_msg}
     
-    This is a read-only view. Use column filters in the table to narrow results. Export buttons available for offline analysis.
+    **This page shows all open tasks** (not just sprint-assigned tasks). Section users can set CustomerPriority, and admins can then decide which sprint to assign each task to.
+    
+    {edit_msg} Use column filters in the table to narrow results. Export buttons available for offline analysis.
+    
+    **SprintsAssigned Column:** Shows which sprints a task has been assigned to. Empty means not yet assigned to any sprint.
     
     **Priority Levels:** P5 Critical (red) · P4 High (yellow) · P3 and below (default)
     
