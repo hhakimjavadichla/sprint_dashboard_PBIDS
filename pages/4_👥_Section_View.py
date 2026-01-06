@@ -206,7 +206,29 @@ if not filtered_df.empty:
     gb.configure_column('TaskNum', header_name='TaskNum', width=COLUMN_WIDTHS['TaskNum'])
     gb.configure_column('Status', header_name='Status', width=COLUMN_WIDTHS['Status'])
     gb.configure_column(sv_assignee_col, header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'])
-    gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS['Subject'], tooltipField='Subject')
+    # Subject column with click-to-popup for full text
+    subject_cell_renderer = JsCode("""
+        class SubjectCellRenderer {
+            init(params) {
+                this.eGui = document.createElement('div');
+                this.eGui.style.cursor = 'pointer';
+                this.eGui.style.overflow = 'hidden';
+                this.eGui.style.textOverflow = 'ellipsis';
+                this.eGui.style.whiteSpace = 'nowrap';
+                this.eGui.innerHTML = params.value || '';
+                this.eGui.title = 'Click to view full text';
+                
+                this.eGui.addEventListener('click', () => {
+                    const fullText = params.value || '';
+                    const taskNum = params.data.TaskNum || '';
+                    alert('Task: ' + taskNum + '\\n\\nSubject:\\n' + fullText);
+                });
+            }
+            getGui() { return this.eGui; }
+        }
+    """)
+    gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS['Subject'], 
+                        tooltipField='Subject', cellRenderer=subject_cell_renderer)
     gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=COLUMN_WIDTHS.get('TicketCreatedDt', 110))
     gb.configure_column('TaskCreatedDt', header_name='TaskCreatedDt', width=COLUMN_WIDTHS.get('TaskCreatedDt', 110))
     gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'])
