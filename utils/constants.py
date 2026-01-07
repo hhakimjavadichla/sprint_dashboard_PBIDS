@@ -71,7 +71,8 @@ STATUS_EXCLUDED_CARRYOVER = "Excluded from Carryover"  # Admin manual exclusion
 # Statuses that prevent carryover to next sprint
 STATUS_EXCLUDED = [
     STATUS_COMPLETED, 
-    STATUS_CANCELED, 
+    STATUS_CANCELED,
+    'Cancelled',  # British spelling variant
     STATUS_CLOSED, 
     STATUS_RESOLVED, 
     STATUS_DONE,

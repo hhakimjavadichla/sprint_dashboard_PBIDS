@@ -7,17 +7,19 @@ import streamlit as st
 # Custom CSS for AgGrid - applied via custom_css parameter
 GRID_CUSTOM_CSS = {
     ".ag-tooltip": {
-        "background-color": "#2d2d2d !important",
+        "background-color": "#1a1a2e !important",
         "color": "#ffffff !important",
-        "border": "1px solid #555 !important",
-        "border-radius": "4px !important",
-        "padding": "8px 12px !important",
-        "max-width": "300px !important",
-        "font-size": "12px !important",
-        "line-height": "1.4 !important",
-        "box-shadow": "0 2px 8px rgba(0, 0, 0, 0.3) !important",
+        "border": "2px solid #4a90d9 !important",
+        "border-radius": "8px !important",
+        "padding": "12px 16px !important",
+        "max-width": "450px !important",
+        "min-width": "200px !important",
+        "font-size": "14px !important",
+        "line-height": "1.5 !important",
+        "box-shadow": "0 4px 16px rgba(0, 0, 0, 0.4) !important",
         "white-space": "normal !important",
         "word-wrap": "break-word !important",
+        "z-index": "99999 !important",
     }
 }
 
@@ -137,22 +139,24 @@ def apply_grid_styles():
         font-weight: 500 !important;
     }
     
-    /* AgGrid Tooltip Styling */
+    /* AgGrid Tooltip Styling - Enhanced for visibility */
     .ag-tooltip,
     .ag-theme-streamlit .ag-tooltip,
     .ag-theme-alpine .ag-tooltip,
     div.ag-tooltip {
-        background-color: #2d2d2d !important;
+        background-color: #1a1a2e !important;
         color: #ffffff !important;
-        border: 1px solid #444 !important;
-        border-radius: 4px !important;
-        padding: 8px 12px !important;
-        max-width: 300px !important;
-        font-size: 12px !important;
-        line-height: 1.4 !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+        border: 2px solid #4a90d9 !important;
+        border-radius: 8px !important;
+        padding: 12px 16px !important;
+        max-width: 450px !important;
+        min-width: 200px !important;
+        font-size: 14px !important;
+        line-height: 1.5 !important;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
         white-space: normal !important;
         word-wrap: break-word !important;
+        z-index: 99999 !important;
     }
     
     /* AgGrid horizontal scroll bar */
@@ -279,7 +283,7 @@ function(params) {
         return {'backgroundColor': '#ffeeba', 'color': '#856404'};  // Amber - On hold
     } else if (status === 'logged') {
         return {'backgroundColor': '#cce5ff', 'color': '#004085'};  // Blue - New, unassigned
-    } else if (status === 'canceled' || status === 'excluded from carryover') {
+    } else if (status === 'canceled' || status === 'cancelled' || status === 'excluded from carryover') {
         return {'backgroundColor': '#e2e3e5', 'color': '#383d41'};  // Gray - Excluded
     }
     return {};

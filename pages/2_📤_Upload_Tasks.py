@@ -156,9 +156,11 @@ if uploaded_file:
     
     # Show import logic explanation
     st.markdown("""
-    **Import Rules:**
+    **Import Rules (Field Ownership Model):**
+    - 🔄 **Existing tasks** → Only iTrack fields updated (Status, AssignedTo, Subject, dates)
+    - 🛡️ **Dashboard annotations preserved** → SprintsAssigned, Priority, GoalType, Comments, etc.
     - ✅ **Completed tasks** → Auto-assigned to their original sprint
-    - 📋 **Open tasks** → Go to Work Backlogs for admin assignment (no automatic carryover)
+    - 📋 **Open tasks** → Go to Work Backlogs for admin assignment
     """)
     
     if st.button("📥 Import All Tasks", type="primary", use_container_width=True):
@@ -172,13 +174,92 @@ if uploaded_file:
         
         st.success("✅ Import Complete!")
         
-        col_a, col_b, col_c = st.columns(3)
+        # Summary metrics
+        col_a, col_b, col_c, col_d = st.columns(4)
         with col_a:
-            st.metric("Total Imported", stats['total_imported'])
+            st.metric("Total Processed", stats['total_imported'])
         with col_b:
-            st.metric("New Tasks", stats['new_tasks'])
+            st.metric("New Tasks", stats['new_tasks'], help="First time imported")
         with col_c:
-            st.metric("Updated Tasks", stats['updated_tasks'])
+            st.metric("Updated Tasks", stats['updated_tasks'], help="iTrack fields changed")
+        with col_d:
+            st.metric("Unchanged", stats.get('unchanged_tasks', 0), help="No changes detected")
+        
+        # =================================================================
+        # DETAILED IMPORT REPORT
+        # =================================================================
+        st.markdown("---")
+        st.subheader("📊 Detailed Import Report")
+        
+        # New Tasks by Status
+        new_by_status = stats.get('new_tasks_by_status', {})
+        if new_by_status:
+            with st.expander(f"🆕 New Tasks by Status ({stats['new_tasks']} total)", expanded=True):
+                status_data = []
+                for status, count in sorted(new_by_status.items(), key=lambda x: -x[1]):
+                    marker = "🔴" if status in CLOSED_STATUSES else "🟢"
+                    status_data.append({'Status': f"{marker} {status}", 'Count': count})
+                st.dataframe(pd.DataFrame(status_data), use_container_width=True, hide_index=True)
+        
+        # Task Status Changes
+        task_status_changes = stats.get('task_status_changes', [])
+        if task_status_changes:
+            with st.expander(f"🔄 Task Status Changes ({len(task_status_changes)} tasks)", expanded=True):
+                # Aggregate by transition type
+                transitions = {}
+                for change in task_status_changes:
+                    key = f"{change['old_status']} → {change['new_status']}"
+                    transitions[key] = transitions.get(key, 0) + 1
+                
+                transition_data = []
+                for transition, count in sorted(transitions.items(), key=lambda x: -x[1]):
+                    transition_data.append({'Status Change': transition, 'Count': count})
+                st.dataframe(pd.DataFrame(transition_data), use_container_width=True, hide_index=True)
+                
+                # Show individual changes in nested expander
+                with st.expander("View individual task changes"):
+                    changes_df = pd.DataFrame(task_status_changes)
+                    changes_df.columns = ['Task #', 'Old Status', 'New Status']
+                    st.dataframe(changes_df, use_container_width=True, hide_index=True)
+        
+        # Ticket Status Changes
+        ticket_status_changes = stats.get('ticket_status_changes', [])
+        if ticket_status_changes:
+            with st.expander(f"🎫 Ticket Status Changes ({len(ticket_status_changes)} tickets)", expanded=True):
+                # Aggregate by transition type
+                transitions = {}
+                for change in ticket_status_changes:
+                    key = f"{change['old_status']} → {change['new_status']}"
+                    transitions[key] = transitions.get(key, 0) + 1
+                
+                transition_data = []
+                for transition, count in sorted(transitions.items(), key=lambda x: -x[1]):
+                    transition_data.append({'Status Change': transition, 'Count': count})
+                st.dataframe(pd.DataFrame(transition_data), use_container_width=True, hide_index=True)
+                
+                # Show individual changes in nested expander
+                with st.expander("View individual ticket changes"):
+                    changes_df = pd.DataFrame(ticket_status_changes)
+                    changes_df.columns = ['Task #', 'Old Status', 'New Status']
+                    st.dataframe(changes_df, use_container_width=True, hide_index=True)
+        
+        # Field Changes Summary
+        field_changes = stats.get('field_changes', {})
+        if field_changes:
+            with st.expander(f"📝 Field Changes Summary ({sum(field_changes.values())} changes)", expanded=False):
+                field_data = []
+                for field, count in sorted(field_changes.items(), key=lambda x: -x[1]):
+                    field_data.append({'Field': field, 'Changes': count})
+                st.dataframe(pd.DataFrame(field_data), use_container_width=True, hide_index=True)
+        
+        # No changes message
+        if not new_by_status and not task_status_changes and not ticket_status_changes:
+            st.info("ℹ️ No new tasks or status changes detected in this import.")
+        
+        # =================================================================
+        # BACKLOG STATUS
+        # =================================================================
+        st.markdown("---")
         
         # Get backlog count
         backlog_tasks = task_store.get_backlog_tasks()
@@ -187,7 +268,6 @@ if uploaded_file:
         st.info(f"📋 **{backlog_count} open tasks** are in the Work Backlogs.")
         
         # Link to Work Backlogs
-        st.markdown("---")
         st.markdown("### 👉 Next Steps:")
         st.page_link("pages/8_📋_Work_Backlogs.py", label="Assign Tasks to Sprints", icon="📋")
 

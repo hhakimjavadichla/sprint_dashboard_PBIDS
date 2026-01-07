@@ -355,7 +355,7 @@ if not filtered_tasks.empty:
     full_column_order = [
         'SprintNumber', 'SprintName', 'SprintStartDt', 'SprintEndDt', 'TaskOrigin', 'SprintsAssigned',
         'TicketNum', 'TaskCount', 'TicketType', 'Section', 'CustomerName', 'TaskNum',
-        'Status', 'AssignedTo', 'Subject', 'TicketCreatedDt', 'TaskCreatedDt',
+        'Status', 'TicketStatus', 'AssignedTo', 'Subject', 'TicketCreatedDt', 'TaskCreatedDt',
         'DaysOpen', 'CustomerPriority', 'FinalPriority', 'GoalType', 'DependencyOn',
         'DependenciesLead', 'DependencySecured', 'Comments', 'HoursEstimated',
         'TaskHoursSpent', 'TicketHoursSpent'
@@ -411,6 +411,8 @@ if not filtered_tasks.empty:
                         headerTooltip=COLUMN_DESCRIPTIONS.get('TaskNum', ''))
     gb.configure_column('Status', header_name='Status', width=COLUMN_WIDTHS['Status'], editable=False,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('Status', ''), )
+    gb.configure_column('TicketStatus', header_name='TicketStatus', width=COLUMN_WIDTHS.get('TicketStatus', 100), editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketStatus', ''))
     gb.configure_column('AssignedTo', header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'], editable=False,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('AssignedTo', ''))
     gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS['Subject'], editable=False,

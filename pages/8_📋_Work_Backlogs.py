@@ -209,7 +209,7 @@ else:
     display_cols = [
         'UniqueTaskId', '_TicketGroup', '_IsMultiTask', 'SprintsAssigned',
         'TicketNum', 'TaskCount', 'TicketType', 'Section', 'CustomerName', 'TaskNum',
-        'Status', 'AssignedTo', 'Subject', 'TicketCreatedDt', 'TaskCreatedDt',
+        'Status', 'TicketStatus', 'AssignedTo', 'Subject', 'TicketCreatedDt', 'TaskCreatedDt',
         'DaysOpen', 'CustomerPriority', 'FinalPriority', 'GoalType', 'DependencyOn',
         'DependenciesLead', 'DependencySecured', 'Comments', 'HoursEstimated',
         'TaskHoursSpent', 'TicketHoursSpent'
@@ -263,6 +263,8 @@ else:
                         headerTooltip=COLUMN_DESCRIPTIONS.get('TaskNum', ''))
     gb.configure_column('Status', header_name='Status', width=COLUMN_WIDTHS['Status'],
                         headerTooltip=COLUMN_DESCRIPTIONS.get('Status', ''), )
+    gb.configure_column('TicketStatus', header_name='TicketStatus', width=COLUMN_WIDTHS.get('TicketStatus', 100),
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketStatus', ''))
     gb.configure_column('AssignedTo', header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'],
                         headerTooltip=COLUMN_DESCRIPTIONS.get('AssignedTo', ''))
     gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS['Subject'],

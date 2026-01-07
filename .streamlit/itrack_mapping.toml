@@ -53,6 +53,7 @@ required_columns = [ "Ticket ID", "Task ID", "Task_Status", "Task_Owner", "Ticke
 Task = "TaskNum"
 "Parent ID" = "TicketNum"
 Status = "Status"
+"Ticket Status" = "TicketStatus"
 Assignee = "AssignedTo"
 Subject = "Subject"
 Team = "Section"
@@ -71,7 +72,7 @@ Team = "Section"
 "Customer Name" = "CustomerName"
 
 [sprint_columns]
-column_order = [ "SprintNumber", "SprintName", "SprintStartDt", "SprintEndDt", "TaskNum", "TicketNum", "TicketType", "Section", "Status", "AssignedTo", "CustomerName", "Subject", "CustomerPriority", "DaysOpen", "TaskAssignedDt", "TaskCreatedDt", "TaskResolvedDt", "TicketCreatedDt", "TicketResolvedDt", "HoursEstimated", "DependencyOn", "DependenciesLead", "DependencySecured", "Comments", "TicketTotalTimeSpent", "TaskMinutesSpent",]
+column_order = [ "SprintNumber", "SprintName", "SprintStartDt", "SprintEndDt", "TaskNum", "TicketNum", "TicketType", "Section", "Status", "TicketStatus", "AssignedTo", "CustomerName", "Subject", "CustomerPriority", "DaysOpen", "TaskAssignedDt", "TaskCreatedDt", "TaskResolvedDt", "TicketCreatedDt", "TicketResolvedDt", "HoursEstimated", "GoalType", "DependencyOn", "DependenciesLead", "DependencySecured", "Comments", "TicketTotalTimeSpent", "TaskMinutesSpent",]
 
 [team_members]
 valid_team_members = [ "iibarraflores", "clee", "mkusumo", "mjimeno", "fsharifi", "creyes", "jskinta", "ansharma", "dxu", "dmaglinte", "hhakimjavadi", "rrene", "yapan", "dbuckley", "amarkowitz",]

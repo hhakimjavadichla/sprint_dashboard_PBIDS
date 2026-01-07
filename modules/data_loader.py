@@ -384,6 +384,7 @@ class DataLoader:
         
         # Initialize planning columns
         sprint_df['HoursEstimated'] = None
+        sprint_df['GoalType'] = ''  # Default to blank, not 'n'
         sprint_df['DependencyOn'] = None
         sprint_df['DependenciesLead'] = None
         sprint_df['DependencySecured'] = None

@@ -138,7 +138,7 @@ with tab1:
     full_column_order = [
         'SprintNumber', 'SprintName', 'SprintStartDt', 'SprintEndDt', 'TaskOrigin', 'SprintsAssigned',
         'TicketNum', 'TaskCount', 'TicketType', 'Section', 'CustomerName', 'TaskNum',
-        'Status', tab1_assignee_col, 'Subject', 'TicketCreatedDt', 'TaskCreatedDt',
+        'Status', 'TicketStatus', tab1_assignee_col, 'Subject', 'TicketCreatedDt', 'TaskCreatedDt',
         'DaysOpen', 'CustomerPriority', 'FinalPriority', 'GoalType', 'DependencyOn',
         'DependenciesLead', 'DependencySecured', 'Comments', 'HoursEstimated',
         'TaskHoursSpent', 'TicketHoursSpent'
@@ -173,6 +173,7 @@ with tab1:
     gb.configure_column('CustomerName', header_name='CustomerName', width=COLUMN_WIDTHS.get('CustomerName', 120))
     gb.configure_column('TaskNum', header_name='TaskNum', width=COLUMN_WIDTHS['TaskNum'])
     gb.configure_column('Status', header_name='Status', width=COLUMN_WIDTHS['Status'])
+    gb.configure_column('TicketStatus', header_name='TicketStatus', width=COLUMN_WIDTHS.get('TicketStatus', 100))
     gb.configure_column(tab1_assignee_col, header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'])
     gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS['Subject'], tooltipField='Subject')
     gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=COLUMN_WIDTHS.get('TicketCreatedDt', 110))

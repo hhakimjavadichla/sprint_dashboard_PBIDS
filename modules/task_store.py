@@ -24,7 +24,7 @@ ALL_TASKS_PATH = os.path.join(
 
 # Statuses that indicate a task is closed (won't carry over)
 CLOSED_STATUSES = [
-    'Completed', 'Closed', 'Resolved', 'Done', 'Canceled', 
+    'Completed', 'Closed', 'Resolved', 'Done', 'Canceled', 'Cancelled',
     'Excluded from Carryover'
 ]
 
@@ -53,6 +53,51 @@ VALID_STATUSES = [
     'Done',         # Alternative completion status
     'Canceled',     # Task canceled
     'Excluded from Carryover'  # Manual exclusion from sprint carryover
+]
+
+# =============================================================================
+# FIELD OWNERSHIP MODEL
+# Defines which system owns each field for import/update purposes
+# =============================================================================
+
+# Fields owned by iTrack - ALWAYS updated from iTrack imports
+ITRACK_OWNED_FIELDS = [
+    'TaskNum',              # Task identifier (primary key)
+    'TicketNum',            # Parent ticket ID
+    'Status',               # Task status from iTrack
+    'TicketStatus',         # Ticket status from iTrack
+    'AssignedTo',           # Current assignee
+    'Subject',              # Ticket subject line
+    'Section',              # Team/section
+    'CustomerName',         # Customer name
+    'TaskAssignedDt',       # When task was assigned
+    'TaskCreatedDt',        # When task was created
+    'TaskResolvedDt',       # When task was resolved
+    'TicketCreatedDt',      # When parent ticket was created
+    'TicketResolvedDt',     # When parent ticket was resolved
+    'TicketTotalTimeSpent', # Time logged on ticket
+    'TaskMinutesSpent',     # Time logged on task
+]
+
+# Fields owned by Dashboard - NEVER overwritten by iTrack imports
+DASHBOARD_OWNED_FIELDS = [
+    'SprintsAssigned',      # Which sprints task is assigned to (admin sets)
+    'CustomerPriority',     # Priority set by customer/section
+    'FinalPriority',        # Final priority set by admin
+    'GoalType',             # Mandatory/Stretch goal classification
+    'HoursEstimated',       # Estimated hours for the task
+    'DependencyOn',         # Task dependencies
+    'DependenciesLead',     # Who is leading dependency resolution
+    'DependencySecured',    # Whether dependencies are secured
+    'Comments',             # Admin/section comments
+    'StatusUpdateDt',       # When status was manually updated in dashboard
+]
+
+# Fields computed by the system during import
+COMPUTED_FIELDS = [
+    'OriginalSprintNumber', # Sprint when task was created (from TaskAssignedDt)
+    'TicketType',           # IR/SR/PR/NC extracted from Subject
+    'DaysOpen',             # Calculated from TicketCreatedDt
 ]
 
 
@@ -147,11 +192,15 @@ class TaskStore:
     
     def import_tasks(self, itrack_df: pd.DataFrame, mapped_df: pd.DataFrame) -> Dict:
         """
-        Import tasks from iTrack extract.
-        Each task gets a UniqueTaskId = TaskNum_S{OriginalSprintNumber}
+        Import tasks from iTrack extract using Field Ownership Model.
+        
+        - TaskNum is the unique identifier for each task
+        - iTrack-owned fields are ALWAYS updated from imports
+        - Dashboard-owned fields are NEVER overwritten by imports
+        - New tasks get default values for dashboard fields
         
         Args:
-            itrack_df: Raw iTrack DataFrame
+            itrack_df: Raw iTrack DataFrame (unused, kept for compatibility)
             mapped_df: DataFrame after column mapping to sprint schema
         
         Returns:
@@ -161,7 +210,13 @@ class TaskStore:
             'total_imported': 0,
             'new_tasks': 0,
             'updated_tasks': 0,
-            'sprints_affected': set()
+            'unchanged_tasks': 0,
+            'sprints_affected': set(),
+            # Detailed breakdowns
+            'new_tasks_by_status': {},        # {status: count}
+            'task_status_changes': [],        # [{task_num, old_status, new_status}]
+            'ticket_status_changes': [],      # [{task_num, old_status, new_status}]
+            'field_changes': {}               # {field_name: count}
         }
         
         if mapped_df.empty:
@@ -173,86 +228,129 @@ class TaskStore:
                 mapped_df['TaskAssignedDt'], errors='coerce'
             )
         
-        # Assign each task to its original sprint
+        # Get existing TaskNums for quick lookup
+        existing_task_nums = set()
+        if not self.tasks_df.empty and 'TaskNum' in self.tasks_df.columns:
+            existing_task_nums = set(self.tasks_df['TaskNum'].dropna().astype(str).tolist())
+        
+        # Process each task from import
         for idx, row in mapped_df.iterrows():
             task_num = row.get('TaskNum')
-            task_assigned_dt = row.get('TaskAssignedDt')
             
             if pd.isna(task_num):
                 continue
             
-            # Find original sprint based on TaskAssignedDt
+            task_num_str = str(task_num)
+            task_assigned_dt = row.get('TaskAssignedDt')
+            
+            # Calculate OriginalSprintNumber (computed field)
             original_sprint = self.calendar.get_sprint_for_date(task_assigned_dt)
             if original_sprint:
                 original_sprint_num = original_sprint['SprintNumber']
                 stats['sprints_affected'].add(original_sprint_num)
             else:
-                # No matching sprint - assign to sprint 0 (unassigned)
                 original_sprint_num = 0
             
-            # Create unique task ID
-            unique_id = f"{task_num}_S{original_sprint_num}"
-            mapped_df.at[idx, 'UniqueTaskId'] = unique_id
-            mapped_df.at[idx, 'OriginalSprintNumber'] = original_sprint_num
-            
-            # Apply assignment rules based on task status
-            status = row.get('Status', '')
-            if status in CLOSED_STATUSES:
-                # COMPLETED TASKS: Auto-assign to their original sprint
-                mapped_df.at[idx, 'SprintsAssigned'] = str(original_sprint_num)
+            if task_num_str in existing_task_nums:
+                # =============================================================
+                # EXISTING TASK: Update only iTrack-owned fields
+                # =============================================================
+                mask = self.tasks_df['TaskNum'].astype(str) == task_num_str
                 
-                # Set StatusUpdateDt from resolved date
-                resolved_dt = row.get('TaskResolvedDt') or row.get('TicketResolvedDt')
-                if pd.notna(resolved_dt):
-                    mapped_df.at[idx, 'StatusUpdateDt'] = resolved_dt
-                else:
-                    mapped_df.at[idx, 'StatusUpdateDt'] = datetime.now()
-            else:
-                # OPEN TASKS: Go to Work Backlogs (no sprints assigned yet)
-                mapped_df.at[idx, 'SprintsAssigned'] = ''
-            
-            # Set default GoalType if not already set
-            if 'GoalType' not in mapped_df.columns or pd.isna(mapped_df.at[idx, 'GoalType']):
-                mapped_df.at[idx, 'GoalType'] = DEFAULT_GOAL_TYPE
-            
-            # Create dashboard-only priority columns (not from iTrack)
-            if 'CustomerPriority' not in mapped_df.columns:
-                mapped_df['CustomerPriority'] = None
-            if 'FinalPriority' not in mapped_df.columns:
-                mapped_df['FinalPriority'] = None
-            
-            stats['total_imported'] += 1
-        
-        # Merge with existing store
-        if self.tasks_df.empty:
-            self.tasks_df = mapped_df.copy()
-            stats['new_tasks'] = len(mapped_df)
-        else:
-            # Update existing tasks, add new ones
-            existing_ids = set(self.tasks_df['UniqueTaskId'].tolist()) if 'UniqueTaskId' in self.tasks_df.columns else set()
-            
-            for idx, row in mapped_df.iterrows():
-                unique_id = row.get('UniqueTaskId')
+                # Update iTrack-owned fields (except TaskNum which is the key)
+                fields_updated = False
+                for field in ITRACK_OWNED_FIELDS:
+                    if field == 'TaskNum':  # Skip the key field
+                        continue
+                    if field in row.index and field in self.tasks_df.columns:
+                        old_value = self.tasks_df.loc[mask, field].iloc[0]
+                        new_value = row[field]
+                        # Only update if value has changed and new value is not null
+                        if pd.notna(new_value) and str(old_value) != str(new_value):
+                            self.tasks_df.loc[mask, field] = new_value
+                            fields_updated = True
+                            
+                            # Track field change count
+                            stats['field_changes'][field] = stats['field_changes'].get(field, 0) + 1
+                            
+                            # Track Task Status changes specifically
+                            if field == 'Status':
+                                old_status = str(old_value) if pd.notna(old_value) else 'Unknown'
+                                new_status = str(new_value)
+                                stats['task_status_changes'].append({
+                                    'task_num': task_num_str,
+                                    'old_status': old_status,
+                                    'new_status': new_status
+                                })
+                            
+                            # Track Ticket Status changes specifically
+                            if field == 'TicketStatus':
+                                old_status = str(old_value) if pd.notna(old_value) else 'Unknown'
+                                new_status = str(new_value)
+                                stats['ticket_status_changes'].append({
+                                    'task_num': task_num_str,
+                                    'old_status': old_status,
+                                    'new_status': new_status
+                                })
                 
-                if unique_id in existing_ids:
-                    # Update existing task (except admin-set fields)
-                    mask = self.tasks_df['UniqueTaskId'] == unique_id
-                    
-                    # Fields to update from iTrack (not admin fields)
-                    # Note: CustomerPriority/FinalPriority are dashboard-only, not from iTrack
-                    update_fields = ['Status', 'AssignedTo', 'Subject']
-                    for field in update_fields:
-                        if field in row.index and pd.notna(row[field]):
-                            # Don't overwrite if admin has set StatusUpdateDt
-                            if field == 'Status' and pd.notna(self.tasks_df.loc[mask, 'StatusUpdateDt'].iloc[0]):
-                                continue
-                            self.tasks_df.loc[mask, field] = row[field]
-                    
+                # Update computed fields
+                self.tasks_df.loc[mask, 'OriginalSprintNumber'] = original_sprint_num
+                
+                if fields_updated:
                     stats['updated_tasks'] += 1
                 else:
-                    # Add new task
-                    self.tasks_df = pd.concat([self.tasks_df, row.to_frame().T], ignore_index=True)
-                    stats['new_tasks'] += 1
+                    stats['unchanged_tasks'] += 1
+                
+                # NOTE: Dashboard-owned fields are NOT touched:
+                # SprintsAssigned, CustomerPriority, FinalPriority, GoalType,
+                # HoursEstimated, DependencyOn, DependenciesLead, DependencySecured,
+                # Comments, StatusUpdateDt - all preserved!
+                
+            else:
+                # =============================================================
+                # NEW TASK: Initialize with defaults for dashboard fields
+                # =============================================================
+                new_task = row.copy()
+                
+                # Set computed fields
+                new_task['OriginalSprintNumber'] = original_sprint_num
+                
+                # Initialize dashboard-owned fields with defaults
+                status = row.get('Status', '')
+                if status in CLOSED_STATUSES:
+                    # Completed tasks: assign to their original sprint
+                    new_task['SprintsAssigned'] = str(original_sprint_num)
+                    resolved_dt = row.get('TaskResolvedDt') or row.get('TicketResolvedDt')
+                    new_task['StatusUpdateDt'] = resolved_dt if pd.notna(resolved_dt) else datetime.now()
+                else:
+                    # Open tasks: no sprint assigned yet (goes to Work Backlogs)
+                    new_task['SprintsAssigned'] = ''
+                    new_task['StatusUpdateDt'] = None
+                
+                # Set other dashboard field defaults
+                new_task['CustomerPriority'] = None
+                new_task['FinalPriority'] = None
+                new_task['GoalType'] = DEFAULT_GOAL_TYPE
+                new_task['HoursEstimated'] = None
+                new_task['DependencyOn'] = None
+                new_task['DependenciesLead'] = None
+                new_task['DependencySecured'] = None
+                new_task['Comments'] = None
+                
+                # Add to store
+                if self.tasks_df.empty:
+                    self.tasks_df = pd.DataFrame([new_task])
+                else:
+                    self.tasks_df = pd.concat([self.tasks_df, new_task.to_frame().T], ignore_index=True)
+                
+                stats['new_tasks'] += 1
+                existing_task_nums.add(task_num_str)  # Track for duplicates in same import
+                
+                # Track new tasks by status
+                task_status = str(status) if status else 'Unknown'
+                stats['new_tasks_by_status'][task_status] = stats['new_tasks_by_status'].get(task_status, 0) + 1
+            
+            stats['total_imported'] += 1
         
         stats['sprints_affected'] = list(stats['sprints_affected'])
         return stats
