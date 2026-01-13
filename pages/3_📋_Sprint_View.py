@@ -11,7 +11,7 @@ from modules.task_store import get_task_store, CLOSED_STATUSES
 from modules.sprint_calendar import get_sprint_calendar
 from components.auth import require_admin, display_user_info, is_admin
 from utils.exporters import export_to_csv, export_to_excel
-from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS
+from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, TASK_ORIGIN_CELL_STYLE, COLUMN_WIDTHS, display_column_help, get_display_column_order, clean_subject_column
 
 st.set_page_config(
     page_title="Sprint View (Prototype)",
@@ -134,26 +134,20 @@ with tab1:
     
     st.caption(f"Showing {len(filtered_df)} tasks")
     
-    # All columns - same as Sprint Planning (read-only view)
-    full_column_order = [
-        'SprintNumber', 'SprintName', 'SprintStartDt', 'SprintEndDt', 'TaskOrigin', 'SprintsAssigned',
-        'TicketNum', 'TaskCount', 'TicketType', 'Section', 'CustomerName', 'TaskNum',
-        'Status', 'TicketStatus', tab1_assignee_col, 'Subject', 'TicketCreatedDt', 'TaskCreatedDt',
-        'DaysOpen', 'CustomerPriority', 'FinalPriority', 'GoalType', 'DependencyOn',
-        'DependenciesLead', 'DependencySecured', 'Comments', 'HoursEstimated',
-        'TaskHoursSpent', 'TicketHoursSpent'
-    ]
-    display_order = ['UniqueTaskId', '_TicketGroup', '_IsMultiTask'] + full_column_order
+    # Use standardized column order from config
+    display_order = get_display_column_order(tab1_assignee_col)
     
     available_cols = [col for col in display_order if col in filtered_df.columns]
     display_df = filtered_df[available_cols].copy()
+    
+    # Clean subject column (remove LAB-XX: NNNNNN - prefix)
+    display_df = clean_subject_column(display_df)
     
     # Configure grid
     gb = GridOptionsBuilder.from_dataframe(display_df)
     gb.configure_default_column(resizable=True, filterable=True, sortable=True)
     
     # Hidden columns
-    gb.configure_column('UniqueTaskId', hide=True)
     gb.configure_column('_TicketGroup', hide=True)
     gb.configure_column('_IsMultiTask', hide=True)
     
@@ -179,7 +173,7 @@ with tab1:
     gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=COLUMN_WIDTHS.get('TicketCreatedDt', 110))
     gb.configure_column('TaskCreatedDt', header_name='TaskCreatedDt', width=COLUMN_WIDTHS.get('TaskCreatedDt', 110))
     gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'])
-    gb.configure_column('CustomerPriority', header_name='CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'], cellStyle=PRIORITY_CELL_STYLE)
+    gb.configure_column('CustomerPriority', header_name='CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'])
     gb.configure_column('FinalPriority', header_name='FinalPriority', width=COLUMN_WIDTHS.get('FinalPriority', 100))
     gb.configure_column('GoalType', header_name='GoalType', width=COLUMN_WIDTHS.get('GoalType', 90))
     gb.configure_column('DependencyOn', header_name='Dependency', width=COLUMN_WIDTHS.get('DependencyOn', 110))
@@ -192,6 +186,7 @@ with tab1:
     gb.configure_pagination(enabled=False)
     
     grid_options = gb.build()
+    grid_options['enableBrowserTooltips'] = False  # Disable browser tooltips to avoid double tooltip
     
     AgGrid(
         display_df,
@@ -258,9 +253,9 @@ with tab2:
                 # Prepare display dataframe with better formatting
                 display_df = filtered_tasks.copy()
                 
-                # Create Sprint ID column: S10-TaskNum
+                # Create Sprint ID column: S{SprintNumber}-TaskNum
                 display_df['SprintTaskId'] = display_df.apply(
-                    lambda r: f"S{int(r['OriginalSprintNumber'])}-{r['TaskNum']}", axis=1
+                    lambda r: f"S{selected_sprint_num}-{r['TaskNum']}", axis=1
                 )
                 
                 # Format TaskAssignedDt for display
@@ -274,7 +269,7 @@ with tab2:
                 
                 # Columns to display in grid
                 grid_cols = ['SprintTaskId', 'Status', assignee_col, 'Section', 'TicketType', 
-                            'AssignedDate', 'DaysOpen', 'Subject', 'UniqueTaskId']
+                            'AssignedDate', 'DaysOpen', 'Subject', 'TaskNum']
                 available_grid_cols = [c for c in grid_cols if c in display_df.columns]
                 grid_df = display_df[available_grid_cols].copy()
                 
@@ -294,9 +289,10 @@ with tab2:
                 gb.configure_column('AssignedDate', header_name='AssignedDate', width=COLUMN_WIDTHS.get('AssignedDate', 115))
                 gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'])
                 gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS['Subject'], tooltipField='Subject')
-                gb.configure_column('UniqueTaskId', hide=True)  # Hidden but needed for reference
+                gb.configure_column('TaskNum', hide=True)  # Hidden but needed for reference
                 
                 grid_options = gb.build()
+                grid_options['enableBrowserTooltips'] = False  # Disable browser tooltips to avoid double tooltip
                 
                 st.markdown("#### 📋 Select Tasks to Update")
                 st.caption("Click checkbox to select tasks. Use header checkbox to select all.")
@@ -334,8 +330,8 @@ with tab2:
                             st.write(f"• **{row.get('SprintTaskId', 'N/A')}** | {row.get('Status', 'N/A')} | {row.get('AssignedTo', 'N/A')} | {str(row.get('Subject', ''))[:50]}")
                     
                     # Get earliest task assigned date from selected tasks
-                    selected_unique_ids = selected_df['UniqueTaskId'].tolist()
-                    selected_full_data = filtered_tasks[filtered_tasks['UniqueTaskId'].isin(selected_unique_ids)]
+                    selected_task_nums = [str(t) for t in selected_df['TaskNum'].tolist()]
+                    selected_full_data = filtered_tasks[filtered_tasks['TaskNum'].astype(str).isin(selected_task_nums)]
                     
                     min_dates = []
                     for _, row in selected_full_data.iterrows():
@@ -396,20 +392,21 @@ with tab2:
                     valid_tasks = []
                     for _, row in selected_full_data.iterrows():
                         task_assigned = row.get('TaskAssignedDt')
+                        task_num = str(row['TaskNum'])
                         if pd.notna(task_assigned):
                             if isinstance(task_assigned, str):
                                 task_assigned = pd.to_datetime(task_assigned)
                             task_date = task_assigned.date() if hasattr(task_assigned, 'date') else task_assigned
                             if status_update_date < task_date:
                                 invalid_tasks.append({
-                                    'id': row['UniqueTaskId'],
-                                    'task': row['TaskNum'],
+                                    'id': task_num,
+                                    'task': task_num,
                                     'assigned': task_date
                                 })
                             else:
-                                valid_tasks.append(row['UniqueTaskId'])
+                                valid_tasks.append(task_num)
                         else:
-                            valid_tasks.append(row['UniqueTaskId'])
+                            valid_tasks.append(task_num)
                     
                     if invalid_tasks:
                         st.warning(f"⚠️ {len(invalid_tasks)} task(s) have Task Assigned Date after the selected Status Update Date:")
@@ -444,22 +441,6 @@ with tab2:
 with tab3:
     st.subheader("📊 Task Distribution")
     
-    # By original sprint
-    if 'OriginalSprintNumber' in sprint_tasks.columns:
-        st.markdown("**Tasks by Original Sprint:**")
-        
-        orig_counts = sprint_tasks.groupby('OriginalSprintNumber').size().reset_index(name='Count')
-        orig_counts['Sprint'] = orig_counts['OriginalSprintNumber'].apply(lambda x: f"Sprint {int(x)}")
-        orig_counts['Type'] = orig_counts['OriginalSprintNumber'].apply(
-            lambda x: 'Original' if x == selected_sprint_num else 'Carryover'
-        )
-        
-        st.dataframe(
-            orig_counts[['Sprint', 'Count', 'Type']],
-            use_container_width=True,
-            hide_index=True
-        )
-    
     # By status
     if 'Status' in sprint_tasks.columns:
         st.markdown("**Tasks by Status:**")
@@ -481,7 +462,7 @@ with tab3:
         st.markdown("**Tasks by Assignee:**")
         
         assignee_counts = sprint_tasks.groupby('AssignedTo').agg({
-            'UniqueTaskId': 'count',
+            'TaskNum': 'count',
             'Status': lambda x: sum(x.isin(CLOSED_STATUSES))
         }).reset_index()
         assignee_counts.columns = ['Assignee', 'Total', 'Closed']

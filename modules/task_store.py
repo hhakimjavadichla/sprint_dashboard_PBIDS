@@ -2,12 +2,12 @@
 Task Store Module
 Single source of truth for all tasks across all sprints
 
-Work Backlogs Workflow:
-- All open tasks appear in Work Backlogs
-- Admin assigns tasks to sprints from backlog (can assign same task to multiple sprints)
+Sprint Assignment Policy:
+- NO automatic sprint assignment based on dates
+- All new tasks go to Work Backlogs with no sprint assigned
+- Admin assigns tasks to sprints manually from Work Backlogs page
 - SprintsAssigned column tracks all sprint assignments (comma-separated: "4, 5")
-- Completed tasks are removed from backlog
-- No automatic carryover - admin must explicitly assign each sprint
+- Existing tasks preserve their sprint assignments on re-import
 """
 import os
 import pandas as pd
@@ -95,23 +95,37 @@ DASHBOARD_OWNED_FIELDS = [
 
 # Fields computed by the system during import
 COMPUTED_FIELDS = [
-    'OriginalSprintNumber', # Sprint when task was created (from TaskAssignedDt)
     'TicketType',           # IR/SR/PR/NC extracted from Subject
     'DaysOpen',             # Calculated from TicketCreatedDt
 ]
+
+# =============================================================================
+# EDITABLE FIELDS CONFIGURATION
+# Centralized definition of all editable fields with their types and options
+# =============================================================================
+EDITABLE_FIELDS = {
+    'FinalPriority': {'type': 'int', 'nullable': True, 'options': [0, 1, 2, 3, 4, 5]},
+    'GoalType': {'type': 'str', 'nullable': True, 'options': ['', 'Mandatory', 'Stretch']},
+    'DependencyOn': {'type': 'str', 'nullable': True, 'options': ['', 'Yes', 'No']},
+    'DependenciesLead': {'type': 'str', 'nullable': True},
+    'DependencySecured': {'type': 'str', 'nullable': True, 'options': ['', 'Yes', 'Pending', 'No']},
+    'Comments': {'type': 'str', 'nullable': True},
+    'CustomerPriority': {'type': 'int', 'nullable': True, 'options': [0, 1, 2, 3, 4, 5]},
+    'HoursEstimated': {'type': 'float', 'nullable': True},
+}
+
+# String columns that need to be converted at load time
+STRING_COLUMNS = ['DependencyOn', 'DependenciesLead', 'DependencySecured', 'Comments', 'GoalType', 'SprintsAssigned']
 
 
 class TaskStore:
     """
     Manages all tasks in a single store.
     
-    Work Backlogs Workflow:
-    - All open tasks appear in Work Backlogs
-    - Admin assigns tasks to sprints (can assign to multiple sprints over time)
-    - Completed tasks are removed from backlog
-    
-    Key fields:
-    - OriginalSprintNumber: Sprint when task was created (based on TaskAssignedDt)
+    Sprint Assignment Policy:
+    - NO automatic sprint assignment based on dates
+    - NO automatic carryover between sprints
+    - All sprint assignments are done manually via Work Backlogs page
     - SprintsAssigned: Comma-separated list of sprints task was assigned to (e.g., "4, 5")
     """
     
@@ -129,11 +143,10 @@ class TaskStore:
             # Read CSV with SprintsAssigned as string to preserve values
             df = pd.read_csv(self.store_path, dtype={'SprintsAssigned': str})
             
-            # Ensure SprintsAssigned is string and handle NaN
-            if 'SprintsAssigned' in df.columns:
-                df['SprintsAssigned'] = df['SprintsAssigned'].fillna('').astype(str)
-                # Clean up any 'nan' strings
-                df['SprintsAssigned'] = df['SprintsAssigned'].replace('nan', '')
+            # Convert all string columns at load time to avoid dtype issues later
+            for col in STRING_COLUMNS:
+                if col in df.columns:
+                    df[col] = df[col].fillna('').astype(str).replace('nan', '')
             
             # Parse date columns
             date_cols = ['TaskAssignedDt', 'StatusUpdateDt', 'TicketCreatedDt', 
@@ -142,20 +155,15 @@ class TaskStore:
                 if col in df.columns:
                     df[col] = pd.to_datetime(df[col], errors='coerce')
             
-            # Migration: Convert AssignedSprintNumber to SprintsAssigned
+            # Migration: Ensure SprintsAssigned column exists
             if 'SprintsAssigned' not in df.columns:
                 if 'AssignedSprintNumber' in df.columns:
                     # Convert single sprint number to comma-separated string
                     df['SprintsAssigned'] = df['AssignedSprintNumber'].apply(
                         lambda x: str(int(x)) if pd.notna(x) else ''
                     )
-                elif 'OriginalSprintNumber' in df.columns:
-                    # For completed tasks, use OriginalSprintNumber; for open tasks, empty
-                    df['SprintsAssigned'] = df.apply(
-                        lambda row: str(int(row['OriginalSprintNumber'])) if row.get('Status') in CLOSED_STATUSES and pd.notna(row.get('OriginalSprintNumber')) else '',
-                        axis=1
-                    )
                 else:
+                    # No automatic assignment - all tasks start with empty sprints
                     df['SprintsAssigned'] = ''
             
             # Migration: Add GoalType column if not exists
@@ -185,10 +193,92 @@ class TaskStore:
                 self.tasks_df['SprintsAssigned'] = self.tasks_df['SprintsAssigned'].replace('nan', '')
             
             self.tasks_df.to_csv(self.store_path, index=False)
+            print(f"TaskStore: Saved {len(self.tasks_df)} tasks to {self.store_path}")
             return True
         except Exception as e:
             print(f"Error saving task store: {e}")
             return False
+    
+    def reload(self) -> None:
+        """Reload task store from CSV file"""
+        self.tasks_df = self._load_store()
+    
+    def update_tasks(self, updates: List[Dict]) -> Tuple[int, List[str]]:
+        """
+        Update multiple tasks with validation and type conversion.
+        Centralized method for all editable field updates.
+        
+        Args:
+            updates: List of dicts with 'TaskNum' and field:value pairs
+                     e.g., [{'TaskNum': '123', 'GoalType': 'Mandatory', 'DependencyOn': 'Yes'}]
+        
+        Returns:
+            Tuple of (success_count, error_messages)
+        """
+        success = 0
+        errors = []
+        
+        for update in updates:
+            task_num = update.get('TaskNum')
+            if not task_num or pd.isna(task_num):
+                continue
+            
+            mask = self.tasks_df['TaskNum'].astype(str) == str(task_num)
+            
+            if not mask.any():
+                errors.append(f"Task {task_num} not found")
+                continue
+            
+            try:
+                for field, value in update.items():
+                    if field == 'TaskNum':
+                        continue
+                    if field not in EDITABLE_FIELDS:
+                        continue
+                    
+                    # Type-safe conversion
+                    clean_value = self._convert_field_value(field, value)
+                    self.tasks_df.loc[mask, field] = clean_value
+                
+                success += 1
+            except Exception as e:
+                errors.append(f"Task {task_num}: {str(e)}")
+        
+        # Save if any updates succeeded
+        if success > 0:
+            self.save()
+        
+        return success, errors
+    
+    def _convert_field_value(self, field: str, value) -> any:
+        """
+        Convert a value to the correct type for a field.
+        Handles None, NaN, 'nan', 'None' strings consistently.
+        """
+        field_def = EDITABLE_FIELDS.get(field, {})
+        field_type = field_def.get('type', 'str')
+        
+        # Handle empty/null values
+        if value is None or pd.isna(value):
+            return '' if field_type == 'str' else None
+        
+        str_value = str(value).strip()
+        if str_value.lower() in ('nan', 'none', ''):
+            return '' if field_type == 'str' else None
+        
+        # Type conversion
+        if field_type == 'int':
+            try:
+                return int(float(str_value))
+            except (ValueError, TypeError):
+                return None
+        elif field_type == 'float':
+            try:
+                return float(str_value)
+            except (ValueError, TypeError):
+                return None
+        
+        return str_value
     
     def import_tasks(self, itrack_df: pd.DataFrame, mapped_df: pd.DataFrame) -> Dict:
         """
@@ -241,15 +331,9 @@ class TaskStore:
                 continue
             
             task_num_str = str(task_num)
-            task_assigned_dt = row.get('TaskAssignedDt')
             
-            # Calculate OriginalSprintNumber (computed field)
-            original_sprint = self.calendar.get_sprint_for_date(task_assigned_dt)
-            if original_sprint:
-                original_sprint_num = original_sprint['SprintNumber']
-                stats['sprints_affected'].add(original_sprint_num)
-            else:
-                original_sprint_num = 0
+            # NOTE: OriginalSprintNumber is no longer computed or used
+            # All sprint assignments are done manually via Work Backlogs
             
             if task_num_str in existing_task_nums:
                 # =============================================================
@@ -293,9 +377,6 @@ class TaskStore:
                                     'new_status': new_status
                                 })
                 
-                # Update computed fields
-                self.tasks_df.loc[mask, 'OriginalSprintNumber'] = original_sprint_num
-                
                 if fields_updated:
                     stats['updated_tasks'] += 1
                 else:
@@ -312,19 +393,15 @@ class TaskStore:
                 # =============================================================
                 new_task = row.copy()
                 
-                # Set computed fields
-                new_task['OriginalSprintNumber'] = original_sprint_num
-                
                 # Initialize dashboard-owned fields with defaults
+                # NO AUTO-ASSIGNMENT: All new tasks go to backlog, sprints assigned via Work Backlogs
+                new_task['SprintsAssigned'] = ''
+                
                 status = row.get('Status', '')
                 if status in CLOSED_STATUSES:
-                    # Completed tasks: assign to their original sprint
-                    new_task['SprintsAssigned'] = str(original_sprint_num)
                     resolved_dt = row.get('TaskResolvedDt') or row.get('TicketResolvedDt')
                     new_task['StatusUpdateDt'] = resolved_dt if pd.notna(resolved_dt) else datetime.now()
                 else:
-                    # Open tasks: no sprint assigned yet (goes to Work Backlogs)
-                    new_task['SprintsAssigned'] = ''
                     new_task['StatusUpdateDt'] = None
                 
                 # Set other dashboard field defaults
@@ -397,13 +474,9 @@ class TaskStore:
         )
         result = self.tasks_df[mask].copy()
         
-        # Determine TaskOrigin for each task
+        # TaskOrigin is now always 'Assigned' since all assignments are manual
         if not result.empty:
-            result['TaskOrigin'] = result.apply(
-                lambda row: 'New' if row.get('OriginalSprintNumber') == sprint_number 
-                else 'Assigned',
-                axis=1
-            )
+            result['TaskOrigin'] = 'Assigned'
         
         # Add sprint metadata
         if not result.empty:
@@ -459,7 +532,7 @@ class TaskStore:
     
     def update_task_status(
         self, 
-        unique_task_id: str, 
+        task_num: str, 
         new_status: str, 
         status_update_dt: datetime
     ) -> bool:
@@ -467,7 +540,7 @@ class TaskStore:
         Update a task's status with a specific update date.
         
         Args:
-            unique_task_id: The UniqueTaskId of the task
+            task_num: The TaskNum of the task
             new_status: New status (e.g., 'Closed', 'Canceled')
             status_update_dt: Date when status change takes effect
         
@@ -477,7 +550,7 @@ class TaskStore:
         if self.tasks_df.empty:
             return False
         
-        mask = self.tasks_df['UniqueTaskId'] == unique_task_id
+        mask = self.tasks_df['TaskNum'].astype(str) == str(task_num)
         if not mask.any():
             return False
         
@@ -491,6 +564,38 @@ class TaskStore:
         self.tasks_df.loc[mask, 'StatusUpdateDt'] = status_update_dt
         
         return self.save()
+    
+    def update_task(self, task_num: str, updates: dict) -> bool:
+        """
+        Update a task with the given field updates.
+        
+        Args:
+            task_num: The TaskNum of the task to update
+            updates: Dictionary of field names and their new values
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if self.tasks_df.empty or not updates:
+            print(f"update_task: Empty df or no updates - df empty: {self.tasks_df.empty}, updates: {updates}")
+            return False
+        
+        # Handle both int and string TaskNum
+        task_num_str = str(task_num).strip()
+        mask = self.tasks_df['TaskNum'].astype(str).str.strip() == task_num_str
+        if not mask.any():
+            print(f"update_task: TaskNum {task_num_str} not found in tasks_df")
+            return False
+        
+        # Apply updates
+        for field, value in updates.items():
+            if field in self.tasks_df.columns:
+                self.tasks_df.loc[mask, field] = value
+                print(f"update_task: Updated {field} = {value} for TaskNum {task_num_str}")
+        
+        result = self.save()
+        print(f"update_task: Save result = {result}")
+        return result
     
     def get_backlog_tasks(self) -> pd.DataFrame:
         """
@@ -543,12 +648,55 @@ class TaskStore:
         except:
             return str(sprint_number)
     
-    def assign_task_to_sprint(self, unique_task_id: str, sprint_number: int) -> Tuple[bool, str]:
+    def _remove_sprint_from_list(self, current_sprints: str, sprint_number: int) -> str:
+        """Remove a sprint number from the SprintsAssigned comma-separated list"""
+        if pd.isna(current_sprints) or current_sprints == '':
+            return ''
+        
+        try:
+            sprint_list = [int(s.strip()) for s in str(current_sprints).split(',') if s.strip()]
+            if sprint_number in sprint_list:
+                sprint_list.remove(sprint_number)
+            return ', '.join(map(str, sorted(sprint_list))) if sprint_list else ''
+        except:
+            return ''
+    
+    def remove_task_from_sprint(self, task_num: str, sprint_number: int) -> Tuple[bool, str]:
+        """
+        Remove a sprint from a task's SprintsAssigned list.
+        
+        Example: Task assigned to "1, 2" → remove sprint 1 → becomes "2"
+        If task was only in sprint 1, SprintsAssigned becomes empty (true backlog).
+        
+        Args:
+            task_num: The TaskNum of the task
+            sprint_number: Sprint number to remove from SprintsAssigned
+        
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        if self.tasks_df.empty:
+            return False, "Task store is empty"
+        
+        mask = self.tasks_df['TaskNum'].astype(str) == str(task_num)
+        if not mask.any():
+            return False, f"Task {task_num} not found"
+        
+        current_sprints = self.tasks_df.loc[mask, 'SprintsAssigned'].iloc[0]
+        if not self._sprint_in_list(current_sprints, sprint_number):
+            return False, f"Task {task_num} not in Sprint {sprint_number}"
+        
+        new_sprints = self._remove_sprint_from_list(current_sprints, sprint_number)
+        self.tasks_df.loc[mask, 'SprintsAssigned'] = new_sprints
+        self.save()
+        return True, f"Removed Sprint {sprint_number} from task {task_num}"
+    
+    def assign_task_to_sprint(self, task_num: str, sprint_number: int) -> Tuple[bool, str]:
         """
         Add a sprint assignment to a task (appends to SprintsAssigned list).
         
         Args:
-            unique_task_id: The UniqueTaskId of the task
+            task_num: The TaskNum of the task
             sprint_number: Sprint number to assign to
         
         Returns:
@@ -557,19 +705,14 @@ class TaskStore:
         if self.tasks_df.empty:
             return False, "Task store is empty"
         
-        mask = self.tasks_df['UniqueTaskId'] == unique_task_id
+        mask = self.tasks_df['TaskNum'].astype(str) == str(task_num)
         if not mask.any():
-            return False, f"Task {unique_task_id} not found"
+            return False, f"Task {task_num} not found"
         
         # Get sprint info to validate
         sprint_info = self.calendar.get_sprint_by_number(sprint_number)
         if not sprint_info:
             return False, f"Sprint {sprint_number} not found"
-        
-        # VALIDATION: Cannot assign to sprint older than task creation date
-        original_sprint = self.tasks_df.loc[mask, 'OriginalSprintNumber'].iloc[0]
-        if pd.notna(original_sprint) and sprint_number < original_sprint:
-            return False, f"Cannot assign to Sprint {sprint_number}. Task was created in Sprint {int(original_sprint)}."
         
         # Check if already assigned to this sprint
         current_sprints = self.tasks_df.loc[mask, 'SprintsAssigned'].iloc[0]
@@ -584,12 +727,12 @@ class TaskStore:
             return True, "Success"
         return False, "Failed to save"
     
-    def assign_tasks_to_sprint(self, unique_task_ids: List[str], sprint_number: int) -> Tuple[int, int, List[str]]:
+    def assign_tasks_to_sprint(self, task_nums: List[str], sprint_number: int) -> Tuple[int, int, List[str]]:
         """
         Add sprint assignment to multiple tasks (appends to SprintsAssigned list).
         
         Args:
-            unique_task_ids: List of UniqueTaskIds
+            task_nums: List of TaskNums
             sprint_number: Sprint number to assign to
         
         Returns:
@@ -607,27 +750,20 @@ class TaskStore:
         skipped = 0
         errors = []
         
-        for unique_id in unique_task_ids:
-            mask = self.tasks_df['UniqueTaskId'] == unique_id
+        for task_num in task_nums:
+            mask = self.tasks_df['TaskNum'].astype(str) == str(task_num)
             if mask.any():
-                # VALIDATION: Cannot assign to sprint older than task creation date
-                original_sprint = self.tasks_df.loc[mask, 'OriginalSprintNumber'].iloc[0]
-                if pd.notna(original_sprint) and sprint_number < original_sprint:
+                # Check if already assigned to this sprint
+                current_sprints = self.tasks_df.loc[mask, 'SprintsAssigned'].iloc[0]
+                if self._sprint_in_list(current_sprints, sprint_number):
                     skipped += 1
                     task_num = self.tasks_df.loc[mask, 'TaskNum'].iloc[0]
-                    errors.append(f"Task {task_num}: created in Sprint {int(original_sprint)}, cannot assign to Sprint {sprint_number}")
+                    errors.append(f"Task {task_num}: already assigned to Sprint {sprint_number}")
                 else:
-                    # Check if already assigned to this sprint
-                    current_sprints = self.tasks_df.loc[mask, 'SprintsAssigned'].iloc[0]
-                    if self._sprint_in_list(current_sprints, sprint_number):
-                        skipped += 1
-                        task_num = self.tasks_df.loc[mask, 'TaskNum'].iloc[0]
-                        errors.append(f"Task {task_num}: already assigned to Sprint {sprint_number}")
-                    else:
-                        # Add sprint to the list
-                        new_sprints = self._add_sprint_to_list(current_sprints, sprint_number)
-                        self.tasks_df.loc[mask, 'SprintsAssigned'] = new_sprints
-                        assigned += 1
+                    # Add sprint to the list
+                    new_sprints = self._add_sprint_to_list(current_sprints, sprint_number)
+                    self.tasks_df.loc[mask, 'SprintsAssigned'] = new_sprints
+                    assigned += 1
         
         if assigned > 0:
             self.save()
@@ -640,14 +776,13 @@ class TaskStore:
     
     def get_task_history(self, task_num: str) -> pd.DataFrame:
         """
-        Get all instances of a task across sprints.
-        Useful for tracking task movement.
+        Get a task by its TaskNum.
         
         Args:
-            task_num: Original TaskNum (not UniqueTaskId)
+            task_num: TaskNum (primary identifier)
         
         Returns:
-            DataFrame with task appearances across sprints
+            DataFrame with task data
         """
         if self.tasks_df.empty:
             return pd.DataFrame()

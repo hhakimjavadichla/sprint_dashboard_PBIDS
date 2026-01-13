@@ -74,7 +74,14 @@ class WorklogStore:
     
     def import_worklog(self, file_path: str = None, file_content: bytes = None) -> Tuple[bool, str, Dict]:
         """
-        Import worklog data from iTrack export file.
+        Import worklog data from iTrack export file using date-based merge strategy.
+        
+        Strategy:
+        - For dates included in the upload: Replace all records for those dates
+        - For dates NOT in the upload: Preserve existing data
+        
+        This allows incremental updates (e.g., weekly exports) while preserving
+        historical data for dates not included in the upload.
         
         Args:
             file_path: Path to the CSV file (UTF-16 encoded TSV from iTrack)
@@ -83,7 +90,14 @@ class WorklogStore:
         Returns:
             Tuple of (success, message, stats)
         """
-        stats = {'total': 0, 'valid_logs': 0, 'skipped': 0}
+        stats = {
+            'total': 0,
+            'valid_logs': 0,
+            'skipped': 0,
+            'dates_in_upload': 0,
+            'records_replaced': 0,
+            'records_preserved': 0
+        }
         
         try:
             # Read the file - handle UTF-16 encoding from iTrack
@@ -133,11 +147,37 @@ class WorklogStore:
             stats['valid_logs'] = len(df)
             stats['skipped'] = stats['total'] - stats['valid_logs']
             
-            # Replace existing data with new import
-            self.worklog_df = df
+            # Date-based merge strategy
+            # Get unique dates from uploaded data (as date only, not datetime)
+            uploaded_dates = set(df['LogDate'].dt.date.dropna().unique())
+            stats['dates_in_upload'] = len(uploaded_dates)
+            
+            if not self.worklog_df.empty and 'LogDate' in self.worklog_df.columns:
+                # Get existing records for dates NOT in the upload
+                existing_df = self.worklog_df.copy()
+                existing_df['_date'] = pd.to_datetime(existing_df['LogDate'], errors='coerce').dt.date
+                
+                # Keep only records where date is NOT in the uploaded dates
+                preserved_df = existing_df[~existing_df['_date'].isin(uploaded_dates)].drop(columns=['_date'])
+                stats['records_preserved'] = len(preserved_df)
+                
+                # Count how many records we're replacing (for dates in upload)
+                replaced_df = existing_df[existing_df['_date'].isin(uploaded_dates)]
+                stats['records_replaced'] = len(replaced_df)
+                
+                # Merge: preserved records + new uploaded records
+                self.worklog_df = pd.concat([preserved_df, df], ignore_index=True)
+            else:
+                # No existing data, just use new data
+                self.worklog_df = df
+                stats['records_preserved'] = 0
+                stats['records_replaced'] = 0
             
             if self.save():
-                return True, f"Successfully imported {stats['valid_logs']} worklog entries", stats
+                msg = f"Successfully imported {stats['valid_logs']} worklog entries for {stats['dates_in_upload']} dates"
+                if stats['records_preserved'] > 0:
+                    msg += f" (preserved {stats['records_preserved']} existing records for other dates)"
+                return True, msg, stats
             else:
                 return False, "Failed to save worklog data", stats
                 

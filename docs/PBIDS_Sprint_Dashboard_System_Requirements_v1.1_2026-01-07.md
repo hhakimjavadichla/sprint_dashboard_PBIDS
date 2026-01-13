@@ -1,7 +1,7 @@
 # PBIDS Sprint Dashboard - System Requirements Document
 
-**Version:** 1.0  
-**Date:** January 5, 2026  
+**Version:** 1.1  
+**Date:** January 7, 2026  
 **Document Type:** Functional Requirements Specification  
 
 ---
@@ -26,6 +26,7 @@ The Sprint Dashboard manages task workflows across bi-weekly sprint cycles. It i
 - **Ticket**: A parent entity that may contain multiple tasks
 - **Carryover**: Open tasks that automatically move to the next sprint
 - **TAT (Turn-Around Time)**: Target completion timeframes by ticket type
+- **Field Ownership Model**: Defines which system (iTrack vs Dashboard) owns each field during imports
 
 ---
 
@@ -165,10 +166,18 @@ Row 2 - Task counts (same categories)
 4. **Plan and estimate** in Sprint Planning page
 5. **Repeat each sprint** - upload new extract to update
 
+### Field Ownership Model (v1.1)
+
+The import system uses a **Field Ownership Model** to determine which fields are updated:
+
+- **iTrack-owned fields**: Always updated from imports (Status, TicketStatus, AssignedTo, Subject, dates)
+- **Dashboard-owned fields**: Never overwritten by imports (SprintsAssigned, GoalType, Priority, Comments)
+- **Computed fields**: Calculated during import (OriginalSprintNumber, TicketType, DaysOpen)
+
 ### Task Assignment Logic
 
-- **New Tasks**: When uploaded, new tasks appear in Work Backlogs with no sprint assignment
-- **Existing Tasks**: Task data (status, assignee, etc.) is updated from the new extract
+- **New Tasks**: Added to Work Backlogs with default dashboard field values
+- **Existing Tasks**: Only iTrack-owned fields updated; dashboard annotations preserved
 - **Sprint Assignment**: Admins manually assign tasks to sprints from Work Backlogs page
 - **Carryover**: Open tasks automatically carry over to future sprints until closed
 
@@ -184,16 +193,54 @@ Row 2 - Task counts (same categories)
 #### 4.3.3 Upload Section: iTrack Task Export
 - **File uploader**: CSV files only
 - **Preview**: Shows first 5 rows of uploaded data
-- **"📤 Import Tasks"** button (primary)
-- Success message: "✅ Imported {count} tasks ({new} new, {updated} updated)"
+- **Import Rules Display:**
+  ```
+  **Import Rules (Field Ownership Model):**
+  - 🔄 **Existing tasks** → Only iTrack fields updated (Status, TicketStatus, AssignedTo, dates)
+  - 🛡️ **Dashboard annotations preserved** → SprintsAssigned, Priority, GoalType, Comments
+  - ✅ **Completed tasks** → Auto-assigned to their original sprint
+  - 📋 **Open tasks** → Go to Work Backlogs for admin assignment
+  ```
+- **"📥 Import All Tasks"** button (primary)
 
-#### 4.3.4 Upload Section: iTrack Worklog Export
+#### 4.3.4 Import Report (After Import)
+Success message: "✅ Import Complete!"
+
+**Summary Metrics (4 columns):**
+- **Total Processed** - all tasks in import file
+- **New Tasks** - first time imported (help: "First time imported")
+- **Updated Tasks** - iTrack fields changed (help: "iTrack fields changed")
+- **Unchanged** - no changes detected (help: "No changes detected")
+
+**Detailed Import Report Section:**
+
+1. **🆕 New Tasks by Status** (expandable, expanded by default)
+   - Table showing count of new tasks grouped by status
+   - Status indicators: 🟢 for open, 🔴 for closed
+
+2. **🔄 Task Status Changes** (expandable, expanded by default)
+   - Aggregated transitions table (e.g., "Assigned → Completed: 5")
+   - Nested expander: "View individual task changes" with detailed list
+
+3. **🎫 Ticket Status Changes** (expandable, expanded by default)
+   - Aggregated transitions table
+   - Nested expander: "View individual ticket changes" with detailed list
+
+4. **📝 Field Changes Summary** (expandable, collapsed by default)
+   - Count of changes per iTrack field (e.g., "Status: 5, AssignedTo: 3")
+
+#### 4.3.5 Upload Section: iTrack Worklog Export
 - **File uploader**: CSV files only  
 - **Preview**: Shows first 5 rows
+- **Import Strategy Note**: "Date-based merge — records for dates in the upload are updated; records for dates NOT in the upload are preserved."
 - **"📤 Import Worklogs"** button
-- Success message: "✅ Imported {count} worklog entries"
+- Success message: "✅ Successfully imported {count} worklog entries for {dates} dates (preserved {preserved} existing records for other dates)"
 
-#### 4.3.5 Current Data Status
+**Worklog Import Statistics (6 metrics in 2 rows):**
+- Row 1: Total Rows, Valid Logs, Dates in Upload
+- Row 2: Records Replaced, Records Preserved, Skipped
+
+#### 4.3.6 Current Data Status
 - Task store status (total tasks, sprints with tasks)
 - Worklog status (total entries, date range)
 
@@ -228,7 +275,7 @@ Row 2 - Task counts (same categories)
 
 **Tab 1: "All Tasks"**
 - Full task table (read-only)
-- All columns visible
+- All columns visible including **TicketStatus** (v1.1)
 - Export buttons: "📥 Export CSV", "📥 Export Excel"
 
 **Tab 2: "Update Status"** (Admin only)
@@ -284,6 +331,7 @@ Same format as Dashboard (6 columns × 2 rows for tickets and tasks by type)
 - Title: "### Tasks"
 - Caption: "💡 You can edit **Priority** for open tasks. Double-click the Priority cell to change it."
 - Column descriptions help expander: "❓ Column Descriptions"
+- Includes **TicketStatus** column (v1.1)
 
 **Editable columns (for Section Manager/User, marked with ✏️):**
 - CustomerPriority (dropdown: NotAssigned, 0, 1, 2, 3, 4, 5)
@@ -459,7 +507,7 @@ Export buttons available for offline analysis.
 ### Pre-populated Fields (from iTrack or calculated)
 - **DaysOpen** - Days since ticket creation (calculated)
 - **HoursSpent** - From iTrack worklog (TaskMinutesSpent / 60)
-- **TicketType, Section, CustomerName, Status, AssignedTo, Subject** - From iTrack upload
+- **TicketType, Section, CustomerName, Status, TicketStatus, AssignedTo, Subject** - From iTrack upload
 - **TicketNum, TaskNum, TicketCreatedDt, TaskCreatedDt** - From iTrack upload
 
 ### Tips
@@ -501,7 +549,7 @@ Caption: "✏️ = Editable column (double-click to edit). Changes are saved whe
 - TaskOrigin (New/Carryover with color coding)
 - SprintsAssigned
 - TicketNum, TaskCount, TicketType, Section, CustomerName, TaskNum
-- Status, AssignedTo, Subject
+- Status, **TicketStatus** (v1.1), AssignedTo, Subject
 - TicketCreatedDt, TaskCreatedDt
 - DaysOpen, TaskHoursSpent, TicketHoursSpent
 
@@ -557,7 +605,7 @@ Same format as Dashboard (tickets and tasks by type)
 #### 4.9.5 Task Selection Table
 - Checkbox column for selection (header checkbox for select all)
 - First column: "Sprints Assigned" (tracks all sprint assignments)
-- All task columns (read-only in this view)
+- All task columns including **TicketStatus** (v1.1) (read-only in this view)
 - Multi-task ticket grouping with alternating row colors
 
 #### 4.9.6 Export
@@ -810,12 +858,13 @@ but you cannot edit past submissions.
 | TaskOrigin | "New" or "Carryover" | Calculated | None |
 | SprintsAssigned | Comma-separated list of all sprints | System | None |
 | TicketNum | Parent ticket number | iTrack | None |
-| TaskNum | Task number | iTrack | None |
+| TaskNum | Task number (**Primary Key** for imports) | iTrack | None |
 | TaskCount | Position in ticket (e.g., "1/3") | Calculated | None |
 | TicketType | SR, PR, IR, NC, or AD | iTrack | None |
 | Section | Lab section/team | iTrack | None |
 | CustomerName | Customer name | iTrack | None |
 | Status | Task status | iTrack | Admin (Sprint View) |
+| **TicketStatus** | Ticket-level status (v1.1) | iTrack | None |
 | AssignedTo | Person assigned | iTrack | None |
 | Subject | Task subject/title | iTrack | None |
 | TicketCreatedDt | Ticket creation date | iTrack | None |
@@ -833,7 +882,22 @@ but you cannot edit past submissions.
 | TaskHoursSpent | Hours spent on task | iTrack worklog | None |
 | TicketHoursSpent | Total hours on ticket | iTrack worklog | None |
 
-### 5.2 Priority Values
+### 5.2 Field Ownership Model (v1.1)
+
+Defines which system owns each field during imports:
+
+| Ownership | Fields | Import Behavior |
+|-----------|--------|-----------------|
+| **iTrack-owned** | TaskNum, TicketNum, Status, TicketStatus, AssignedTo, Subject, Section, CustomerName, TaskAssignedDt, TaskCreatedDt, TaskResolvedDt, TicketCreatedDt, TicketResolvedDt, TicketTotalTimeSpent, TaskMinutesSpent | Always updated from iTrack |
+| **Dashboard-owned** | SprintsAssigned, CustomerPriority, FinalPriority, GoalType, HoursEstimated, DependencyOn, DependenciesLead, DependencySecured, Comments, StatusUpdateDt | Never overwritten by import |
+| **Computed** | OriginalSprintNumber, TicketType, DaysOpen, UniqueTaskId, TaskCount | Calculated during import |
+
+**Import Behavior:**
+- **TaskNum** is used as the unique identifier to match existing tasks
+- **Existing tasks**: Only iTrack-owned fields are updated; dashboard annotations preserved
+- **New tasks**: Initialized with default values for dashboard fields
+
+### 5.3 Priority Values
 
 | Value | Label | Color |
 |-------|-------|-------|
@@ -845,7 +909,7 @@ but you cannot edit past submissions.
 | 0 | ⚫ None/No longer needed | Black/Gray |
 | NotAssigned | Not Assigned | Default |
 
-### 5.3 Status Values
+### 5.4 Status Values
 
 **Open Statuses:** Tasks remain in backlog and carry over
 - Pending
@@ -862,7 +926,7 @@ but you cannot edit past submissions.
 - Done
 - Excluded from Carryover
 
-### 5.4 Ticket Types
+### 5.5 Ticket Types
 
 | Code | Full Name |
 |------|-----------|
@@ -872,7 +936,7 @@ but you cannot edit past submissions.
 | NC | Non-classified IS Requests |
 | AD | Admin Request |
 
-### 5.5 User Data Model
+### 5.6 User Data Model
 
 | Field | Description |
 |-------|-------------|
@@ -883,7 +947,7 @@ but you cannot edit past submissions.
 | DisplayName | Display name shown in UI |
 | Active | Boolean - whether user can log in |
 
-### 5.6 Sprint Calendar Data Model
+### 5.7 Sprint Calendar Data Model
 
 | Field | Description |
 |-------|-------------|
@@ -892,7 +956,7 @@ but you cannot edit past submissions.
 | SprintStartDt | Start date |
 | SprintEndDt | End date |
 
-### 5.7 Feedback Data Model
+### 5.8 Feedback Data Model
 
 | Field | Description |
 |-------|-------------|
@@ -904,7 +968,7 @@ but you cannot edit past submissions.
 | WhatDidNotGoWell | Free text |
 | SubmittedAt | Timestamp |
 
-### 5.8 Off Days Data Model
+### 5.9 Off Days Data Model
 
 | Field | Description |
 |-------|-------------|
@@ -912,7 +976,7 @@ but you cannot edit past submissions.
 | TeamMember | Team member email/identifier |
 | OffDate | Date the team member is off |
 
-### 5.9 Worklog Data Model
+### 5.10 Worklog Data Model
 
 | Field | Description |
 |-------|-------------|
@@ -926,17 +990,41 @@ but you cannot edit past submissions.
 
 ## 6. Workflows
 
-### 6.1 Task Import Workflow
+### 6.1 Task Import Workflow (Updated v1.1)
 
 1. Admin exports tasks from iTrack (CSV format)
 2. Admin navigates to Upload Tasks page
 3. Admin uploads CSV file
 4. System validates CSV structure
-5. System imports tasks:
-   - New tasks are added to task store
-   - Existing tasks are updated with new data
-   - Tasks appear in Work Backlogs page
-6. Success message shows counts
+5. System imports tasks using **Field Ownership Model**:
+   - **New tasks**: Added to task store with default dashboard values
+   - **Existing tasks** (matched by TaskNum): Only iTrack-owned fields updated
+   - **Dashboard annotations preserved**: SprintsAssigned, Priority, GoalType, Comments untouched
+6. System displays **Detailed Import Report**:
+   - Summary metrics: Total Processed, New, Updated, Unchanged
+   - New tasks breakdown by status
+   - Task status changes (transitions)
+   - Ticket status changes (transitions)
+   - Field changes summary
+7. Tasks appear in Work Backlogs page
+
+### 6.8 Worklog Import Workflow (Updated v1.1)
+
+1. Admin exports worklogs from iTrack (CSV format)
+2. Admin navigates to Upload Tasks page, Worklog section
+3. Admin uploads worklog CSV file
+4. System imports worklogs using **Date-Based Merge Strategy**:
+   - **For dates in upload**: All existing records for those dates are replaced
+   - **For dates NOT in upload**: Existing records are preserved
+5. System displays import statistics:
+   - Total Rows, Valid Logs, Dates in Upload
+   - Records Replaced, Records Preserved, Skipped
+6. Worklogs available in Worklog Activity page
+
+**Benefits of Date-Based Merge:**
+- Supports incremental updates (e.g., weekly exports)
+- Historical data preserved for dates outside upload range
+- Corrections handled naturally when re-uploading date ranges
 
 ### 6.2 Sprint Assignment Workflow
 
@@ -1112,6 +1200,12 @@ Export files are named with context and timestamp:
 - One submission per section per sprint
 - At least one comment required (what went well OR what did not go well)
 
+### 10.5 Task Import (v1.1)
+
+- TaskNum is the unique identifier for matching tasks
+- iTrack-owned fields are always updated from imports
+- Dashboard-owned fields are never overwritten by imports
+
 ---
 
 ## 11. Navigation Structure
@@ -1144,13 +1238,18 @@ Home (app.py)
 | **Backlog** | Collection of all open tasks not yet completed |
 | **Carryover** | Task that wasn't completed in its original sprint and moves to the next sprint |
 | **Capacity** | Available working hours for a team member (default 52 hours/sprint) |
+| **Dashboard-owned field** | Field managed by the dashboard, never overwritten by iTrack imports (v1.1) |
+| **Field Ownership Model** | System defining which fields are updated during imports vs preserved (v1.1) |
 | **GoalType** | Classification of task importance: Mandatory (must complete) or Stretch (if time permits) |
 | **iTrack** | Source ticketing system from which task data is imported |
+| **iTrack-owned field** | Field sourced from iTrack, always updated during imports (v1.1) |
 | **Off Day** | Day when a team member is unavailable (vacation, sick leave, etc.) |
 | **Sprint** | Two-week work cycle (14 days) |
 | **TAT** | Turn-Around Time - target completion timeframe for a ticket type |
 | **Ticket** | Parent work item that may contain multiple tasks |
+| **TicketStatus** | Status of the parent ticket from iTrack (v1.1) |
 | **Task** | Individual unit of work, child of a ticket |
+| **TaskNum** | Unique task identifier, used as primary key for import matching (v1.1) |
 | **Worklog** | Time tracking entry recording work performed |
 
 ---
@@ -1160,6 +1259,7 @@ Home (app.py)
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-01-05 | PBIDS Team | Initial document |
+| 1.1 | 2026-01-07 | PBIDS Team | Added Field Ownership Model, TicketStatus field, Comprehensive Import Report, TaskNum as primary key, Date-based merge for worklog imports |
 
 ---
 

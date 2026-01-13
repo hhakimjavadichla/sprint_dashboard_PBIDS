@@ -87,6 +87,85 @@ def display_sprint_overview(sprint_df: pd.DataFrame):
     display_metric_row(metrics)
 
 
+def display_ticket_task_metrics(df: pd.DataFrame, exclude_forever_internally: bool = True):
+    """
+    Display summary metrics by ticket type in 6-column layout.
+    Row 1: Tickets by type (SR, PR, IR, NC, AD)
+    Row 2: Tasks by type (SR, PR, IR, NC, AD)
+    
+    This is the same metric card layout used in Sprint Planning and Work Backlogs.
+    
+    Args:
+        df: DataFrame with tasks (must have TicketType and TicketNum columns)
+        exclude_forever_internally: If True, exclude forever tickets before counting.
+                                    Set to False if caller already excluded them.
+    """
+    if df.empty:
+        st.info("No data available")
+        return
+    
+    if exclude_forever_internally:
+        df = exclude_forever_tickets(df)
+    
+    if df.empty or 'TicketType' not in df.columns:
+        st.info("No ticket type data available")
+        return
+    
+    # Count tasks by type
+    task_counts = df['TicketType'].value_counts().to_dict()
+    
+    # Count unique tickets by type
+    ticket_counts = {}
+    if 'TicketNum' in df.columns:
+        for ticket_type in ['SR', 'PR', 'IR', 'NC', 'AD']:
+            ticket_counts[ticket_type] = df[df['TicketType'] == ticket_type]['TicketNum'].nunique()
+        total_tickets = df['TicketNum'].nunique()
+    else:
+        ticket_counts = task_counts.copy()
+        total_tickets = len(df)
+    
+    # Ticket type labels
+    type_labels = {
+        'SR': 'SR (Service Request)',
+        'PR': 'PR (Project Request)',
+        'IR': 'IR (Incident Request)',
+        'NC': 'NC (Non-classified IS Requests)',
+        'AD': 'AD (Admin Request)'
+    }
+    
+    # Row 1: Tickets by category
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    
+    with col1:
+        st.metric("Total Current Tickets", total_tickets)
+    with col2:
+        st.metric("SR", ticket_counts.get('SR', 0), help=type_labels['SR'])
+    with col3:
+        st.metric("PR", ticket_counts.get('PR', 0), help=type_labels['PR'])
+    with col4:
+        st.metric("IR", ticket_counts.get('IR', 0), help=type_labels['IR'])
+    with col5:
+        st.metric("NC", ticket_counts.get('NC', 0), help=type_labels['NC'])
+    with col6:
+        st.metric("AD", ticket_counts.get('AD', 0), help=type_labels['AD'])
+    
+    # Row 2: Tasks by category
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    
+    with col1:
+        st.metric("Total Current Tasks", len(df))
+    with col2:
+        st.metric("SR", task_counts.get('SR', 0), help=type_labels['SR'])
+    with col3:
+        st.metric("PR", task_counts.get('PR', 0), help=type_labels['PR'])
+    with col4:
+        st.metric("IR", task_counts.get('IR', 0), help=type_labels['IR'])
+    with col5:
+        st.metric("NC", task_counts.get('NC', 0), help=type_labels['NC'])
+    with col6:
+        st.metric("AD", task_counts.get('AD', 0), help=type_labels['AD'])
+
+
 def display_priority_breakdown(sprint_df: pd.DataFrame):
     """
     Display priority distribution

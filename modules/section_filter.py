@@ -86,8 +86,14 @@ def filter_by_team_members(df: pd.DataFrame, assignee_col: str = 'AssignedTo') -
         return df
     
     # Filter: keep tasks where assignee is in the valid team list (case-insensitive)
+    # Also include unassigned tasks (empty/null AssignedTo) so they appear in backlog
     valid_team_lower = [name.lower() for name in valid_team]
-    mask = df[assignee_col].astype(str).str.lower().isin(valid_team_lower)
+    assignee_str = df[assignee_col].astype(str).str.lower().str.strip()
+    
+    # Include: valid team members OR unassigned tasks (empty, 'nan', or null)
+    is_valid_team = assignee_str.isin(valid_team_lower)
+    is_unassigned = (assignee_str == '') | (assignee_str == 'nan') | df[assignee_col].isna()
+    mask = is_valid_team | is_unassigned
     
     return df[mask].copy()
 

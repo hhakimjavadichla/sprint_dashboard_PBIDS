@@ -15,7 +15,7 @@ TaskOrigin = "Whether task is New (created in this sprint) or Assigned (from bac
 TicketNum = "The ticket/issue number from iTrack"
 TaskNum = "Task number within the ticket"
 TaskCount = "Task position (e.g., 1/3 means first of 3 tasks)"
-UniqueTaskId = "Unique identifier combining ticket and task numbers"
+UniqueTaskId = "(Deprecated) Legacy field - TaskNum is now the primary identifier"
 
 # Task info
 TicketType = "Type of ticket: IR (Incident), SR (Service Request), NC (New Change)"

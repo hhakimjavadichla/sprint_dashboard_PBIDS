@@ -9,9 +9,11 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 from datetime import datetime
 from modules.task_store import get_task_store
 from modules.sprint_calendar import get_sprint_calendar
+from modules.section_filter import exclude_forever_tickets
 from components.auth import require_admin, display_user_info
-from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, COLUMN_DESCRIPTIONS, display_column_help
+from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, COLUMN_DESCRIPTIONS, display_column_help, get_backlog_column_order, clean_subject_column
 from utils.exporters import export_to_excel
+from components.metrics_dashboard import display_ticket_task_metrics
 
 st.set_page_config(
     page_title="Work Backlogs & Sprint Assignment",
@@ -56,61 +58,16 @@ with st.expander("ℹ️ How to Use This Page", expanded=False):
     - Completed tasks are automatically moved to the **Completed Tasks** page
     """)
 
-# Summary metrics by ticket type
-if not backlog_tasks.empty and 'TicketType' in backlog_tasks.columns:
-    # Count tasks by type
-    task_counts = backlog_tasks['TicketType'].value_counts().to_dict()
-    
-    # Count unique tickets by type
-    ticket_counts = {}
-    if 'TicketNum' in backlog_tasks.columns:
-        for ticket_type in ['SR', 'PR', 'IR', 'NC', 'AD']:
-            ticket_counts[ticket_type] = backlog_tasks[backlog_tasks['TicketType'] == ticket_type]['TicketNum'].nunique()
-        total_tickets = backlog_tasks['TicketNum'].nunique()
-    else:
-        ticket_counts = task_counts.copy()
-        total_tickets = len(backlog_tasks)
-    
-    # Ticket type labels
-    type_labels = {
-        'SR': 'SR (Service Request)',
-        'PR': 'PR (Problem)',
-        'IR': 'IR (Incident Request)',
-        'NC': 'NC (Non-classified IS Requests)',
-        'AD': 'AD (Admin Request)'
-    }
-    
-    # Row 1: Tickets by category
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-    
-    with col1:
-        st.metric("Total Current Tickets", total_tickets)
-    with col2:
-        st.metric("SR", ticket_counts.get('SR', 0), help=type_labels['SR'])
-    with col3:
-        st.metric("PR", ticket_counts.get('PR', 0), help=type_labels['PR'])
-    with col4:
-        st.metric("IR", ticket_counts.get('IR', 0), help=type_labels['IR'])
-    with col5:
-        st.metric("NC", ticket_counts.get('NC', 0), help=type_labels['NC'])
-    with col6:
-        st.metric("AD", ticket_counts.get('AD', 0), help=type_labels['AD'])
-    
-    # Row 2: Tasks by category
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-    
-    with col1:
-        st.metric("Total Current Tasks", len(backlog_tasks))
-    with col2:
-        st.metric("SR", task_counts.get('SR', 0), help=type_labels['SR'])
-    with col3:
-        st.metric("PR", task_counts.get('PR', 0), help=type_labels['PR'])
-    with col4:
-        st.metric("IR", task_counts.get('IR', 0), help=type_labels['IR'])
-    with col5:
-        st.metric("NC", task_counts.get('NC', 0), help=type_labels['NC'])
-    with col6:
-        st.metric("AD", task_counts.get('AD', 0), help=type_labels['AD'])
+# Summary metrics by ticket type (reusable component)
+display_ticket_task_metrics(backlog_tasks)
+
+# Forever ticket filter
+exclude_forever = st.checkbox(
+    "Exclude Forever Tickets",
+    value=False,
+    help="Hide Standing Meetings and Miscellaneous Meetings tasks",
+    key="exclude_forever_backlog"
+)
 
 st.divider()
 
@@ -124,6 +81,11 @@ else:
     
     # Use all backlog tasks (AgGrid has built-in filtering)
     display_tasks = backlog_tasks.copy()
+    
+    # Apply forever ticket filter
+    if exclude_forever:
+        display_tasks = exclude_forever_tickets(display_tasks)
+    
     assignee_col = 'AssignedTo_Display' if 'AssignedTo_Display' in backlog_tasks.columns else 'AssignedTo'
     
     # Calculate TaskCount for each ticket (e.g., "1/3", "2/3", "3/3")
@@ -203,24 +165,35 @@ else:
         st.warning("No sprints available. Please set up sprint calendar first.")
         target_sprint = None
     
+    # Placeholder for assignment UI - will be populated after grid selection
+    assignment_container = st.container()
+    
     st.divider()
     
-    # Prepare display dataframe - same columns as Sprint Planning (plus SprintsAssigned for backlog)
-    display_cols = [
-        'UniqueTaskId', '_TicketGroup', '_IsMultiTask', 'SprintsAssigned',
-        'TicketNum', 'TaskCount', 'TicketType', 'Section', 'CustomerName', 'TaskNum',
-        'Status', 'TicketStatus', 'AssignedTo', 'Subject', 'TicketCreatedDt', 'TaskCreatedDt',
-        'DaysOpen', 'CustomerPriority', 'FinalPriority', 'GoalType', 'DependencyOn',
-        'DependenciesLead', 'DependencySecured', 'Comments', 'HoursEstimated',
-        'TaskHoursSpent', 'TicketHoursSpent'
-    ]
-    
+    # Use standardized column order from config
     # Use display name if available
     if 'AssignedTo_Display' in display_tasks.columns:
         display_tasks['AssignedTo'] = display_tasks['AssignedTo_Display']
     
+    display_cols = get_backlog_column_order('AssignedTo')
     available_cols = [col for col in display_cols if col in display_tasks.columns]
     grid_df = display_tasks[available_cols].copy()
+    
+    # Clean subject column (remove LAB-XX: NNNNNN - prefix)
+    grid_df = clean_subject_column(grid_df)
+    
+    # Convert dependency columns from float to string (required for dropdown editors)
+    for col in ['DependencyOn', 'DependenciesLead', 'DependencySecured', 'Comments']:
+        if col in grid_df.columns:
+            grid_df[col] = grid_df[col].fillna('').astype(str)
+            # Clean up 'nan' strings
+            grid_df[col] = grid_df[col].replace('nan', '')
+    
+    # Define dropdown values for editable columns
+    PRIORITY_VALUES = ['', 0, 1, 2, 3, 4, 5]
+    DEPENDENCY_VALUES = ['', 'Yes', 'No']
+    DEPENDENCY_SECURED_VALUES = ['', 'Yes', 'Pending', 'No']
+    GOAL_TYPE_VALUES = ['', 'Mandatory', 'Stretch']
     
     # Configure AgGrid with row selection
     gb = GridOptionsBuilder.from_dataframe(grid_df)
@@ -244,7 +217,6 @@ else:
     )
     
     # Hidden columns
-    gb.configure_column('UniqueTaskId', hide=True)
     gb.configure_column('_TicketGroup', hide=True)
     gb.configure_column('_IsMultiTask', hide=True)
     
@@ -279,18 +251,32 @@ else:
                         headerTooltip=COLUMN_DESCRIPTIONS.get('DaysOpen', ''), )
     gb.configure_column('CustomerPriority', header_name='CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'],
                         headerTooltip=COLUMN_DESCRIPTIONS.get('CustomerPriority', ''))
-    gb.configure_column('FinalPriority', header_name='FinalPriority', width=COLUMN_WIDTHS['FinalPriority'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('FinalPriority', ''))
-    gb.configure_column('GoalType', header_name='GoalType', width=COLUMN_WIDTHS['GoalType'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('GoalType', ''))
-    gb.configure_column('DependencyOn', header_name='Dependency', width=COLUMN_WIDTHS['DependencyOn'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('DependencyOn', ''))
-    gb.configure_column('DependenciesLead', header_name='DependencyLead(s)', width=COLUMN_WIDTHS['DependenciesLead'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('DependenciesLead', ''), tooltipField='DependenciesLead')
-    gb.configure_column('DependencySecured', header_name='DependencySecured', width=COLUMN_WIDTHS['DependencySecured'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('DependencySecured', ''))
-    gb.configure_column('Comments', header_name='Comments', width=COLUMN_WIDTHS['Comments'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('Comments', ''), tooltipField='Comments')
+    gb.configure_column('FinalPriority', header_name='✏️ FinalPriority', width=COLUMN_WIDTHS['FinalPriority'], editable=True,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('FinalPriority', ''),
+                        cellEditor='agSelectCellEditor',
+                        cellEditorParams={'values': PRIORITY_VALUES})
+    gb.configure_column('GoalType', header_name='✏️ GoalType', width=COLUMN_WIDTHS['GoalType'], editable=True,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('GoalType', ''),
+                        cellEditor='agSelectCellEditor',
+                        cellEditorParams={'values': GOAL_TYPE_VALUES})
+    gb.configure_column('DependencyOn', header_name='✏️ Dependency', width=COLUMN_WIDTHS['DependencyOn'], editable=True,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('DependencyOn', ''),
+                        cellEditor='agSelectCellEditor',
+                        cellEditorParams={'values': DEPENDENCY_VALUES})
+    gb.configure_column('DependenciesLead', header_name='✏️ DependencyLead(s)', width=COLUMN_WIDTHS['DependenciesLead'], editable=True,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('DependenciesLead', ''), tooltipField='DependenciesLead',
+                        cellEditor='agLargeTextCellEditor',
+                        cellEditorPopup=True,
+                        cellEditorParams={'maxLength': 1000, 'rows': 5, 'cols': 40})
+    gb.configure_column('DependencySecured', header_name='✏️ DependencySecured', width=COLUMN_WIDTHS['DependencySecured'], editable=True,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('DependencySecured', ''),
+                        cellEditor='agSelectCellEditor',
+                        cellEditorParams={'values': DEPENDENCY_SECURED_VALUES})
+    gb.configure_column('Comments', header_name='✏️ Comments', width=COLUMN_WIDTHS['Comments'], editable=True,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('Comments', ''), tooltipField='Comments',
+                        cellEditor='agLargeTextCellEditor',
+                        cellEditorPopup=True,
+                        cellEditorParams={'maxLength': 2000, 'rows': 5, 'cols': 50})
     gb.configure_column('HoursEstimated', header_name='HoursEstimated', width=COLUMN_WIDTHS['HoursEstimated'],
                         headerTooltip=COLUMN_DESCRIPTIONS.get('HoursEstimated', ''))
     gb.configure_column('TaskHoursSpent', header_name='TaskHoursSpent', width=COLUMN_WIDTHS['TaskHoursSpent'],
@@ -317,7 +303,9 @@ else:
     
     grid_options = gb.build()
     grid_options['getRowStyle'] = row_style_jscode
+    grid_options['enableBrowserTooltips'] = False  # Disable browser tooltips to avoid double tooltip
     
+    st.caption("✏️ = Editable column (double-click to edit). Click 'Save Changes' below when done.")
     
     # Column descriptions help
     display_column_help(title="❓ Column Descriptions")
@@ -327,11 +315,15 @@ else:
         gridOptions=grid_options,
         height=500,
         theme='streamlit',
-        update_mode=GridUpdateMode.SELECTION_CHANGED,
+        update_mode=GridUpdateMode.MODEL_CHANGED,
+        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
         fit_columns_on_grid_load=False,
         allow_unsafe_jscode=True,
         custom_css=get_custom_css()
     )
+    
+    # Get edited data from grid
+    edited_df = pd.DataFrame(grid_response['data'])
     
     selected_rows = grid_response['selected_rows']
     
@@ -340,6 +332,83 @@ else:
         selected_df = pd.DataFrame(selected_rows) if selected_rows else pd.DataFrame()
     else:
         selected_df = selected_rows if selected_rows is not None else pd.DataFrame()
+    
+    # Populate assignment UI in the container above the table
+    with assignment_container:
+        if selected_df.empty or len(selected_df) == 0:
+            st.info("👆 Select tasks from the table below to assign to the target sprint.")
+        else:
+            num_selected = len(selected_df)
+            st.success(f"✅ **{num_selected} task(s) selected**")
+            
+            # Show selected tasks summary
+            with st.expander(f"📋 View Selected Tasks ({num_selected})", expanded=False):
+                for idx, row in selected_df.iterrows():
+                    st.write(f"• **{row.get('TaskNum', 'N/A')}** | {row.get('Status', 'N/A')} | {row.get('AssignedTo', 'N/A')} | {str(row.get('Subject', ''))[:50]}...")
+            
+            # Assign button
+            if target_sprint is not None:
+                if st.button(f"📤 Assign {num_selected} Task(s) to Sprint {target_sprint}", type="primary", key="assign_btn"):
+                    # Get TaskNums from selected rows
+                    task_nums = [str(t) for t in selected_df['TaskNum'].tolist()]
+                    
+                    # Assign tasks (returns assigned_count, skipped_count, errors)
+                    assigned, skipped, errors = task_store.assign_tasks_to_sprint(task_nums, target_sprint)
+                    
+                    if assigned > 0:
+                        st.success(f"✅ Added Sprint {target_sprint} to {assigned} task(s)")
+                        if skipped > 0:
+                            st.warning(f"⚠️ {skipped} task(s) skipped:")
+                            with st.expander("View details"):
+                                for err in errors:
+                                    st.write(f"• {err}")
+                        st.balloons()
+                        st.rerun()
+                    elif skipped > 0:
+                        st.error(f"❌ All {skipped} task(s) were skipped:")
+                        for err in errors:
+                            st.write(f"• {err}")
+                    else:
+                        st.error("❌ Failed to assign tasks. Please try again.")
+            else:
+                st.warning("Please select a target sprint to assign tasks.")
+    
+    # Save Changes button for editable fields
+    st.markdown("#### 💾 Save Edits")
+    col_save1, col_save2 = st.columns([2, 6])
+    
+    with col_save1:
+        if st.button("💾 Save Changes", type="primary", help="Save all edits to FinalPriority, GoalType, Dependencies, and Comments"):
+            editable_fields = ['FinalPriority', 'GoalType', 'DependencyOn', 'DependenciesLead', 'DependencySecured', 'Comments']
+            
+            if 'TaskNum' not in edited_df.columns:
+                st.error("❌ TaskNum column not found in grid data.")
+            else:
+                # Build updates list from edited grid data
+                updates = []
+                for _, row in edited_df.iterrows():
+                    if pd.notna(row.get('TaskNum')):
+                        update = {'TaskNum': row['TaskNum']}
+                        for field in editable_fields:
+                            if field in row.index:
+                                update[field] = row[field]
+                        updates.append(update)
+                
+                # Use centralized update method
+                success, errors = task_store.update_tasks(updates)
+                
+                if success > 0:
+                    st.toast(f"✅ Updated {success} task(s)", icon="✅")
+                    st.rerun()
+                elif errors:
+                    st.error(f"❌ Errors: {', '.join(errors[:3])}")
+                else:
+                    st.info("No changes to save")
+    
+    with col_save2:
+        st.caption("💡 Edit cells by double-clicking, then click 'Save Changes' to persist your edits.")
+    
+    st.divider()
     
     # Export section - exports current filtered view
     col_export1, col_export2 = st.columns([2, 6])
@@ -364,47 +433,6 @@ else:
     
     with col_export2:
         st.caption("💡 Apply filters above to narrow down data before exporting.")
-    
-    st.divider()
-    
-    # Assignment action
-    if selected_df.empty or len(selected_df) == 0:
-        st.info("👆 Select one or more tasks from the table above to assign to a sprint.")
-    else:
-        num_selected = len(selected_df)
-        st.success(f"✅ **{num_selected} task(s) selected**")
-        
-        # Show selected tasks summary
-        with st.expander(f"📋 View Selected Tasks ({num_selected})", expanded=False):
-            for idx, row in selected_df.iterrows():
-                st.write(f"• **{row.get('TaskNum', 'N/A')}** | {row.get('Status', 'N/A')} | {row.get('AssignedTo', 'N/A')} | {str(row.get('Subject', ''))[:50]}...")
-        
-        # Assign button
-        if target_sprint is not None:
-            if st.button(f"📤 Assign {num_selected} Task(s) to Sprint {target_sprint}", type="primary"):
-                # Get UniqueTaskIds from selected rows
-                task_ids = selected_df['UniqueTaskId'].tolist()
-                
-                # Assign tasks (returns assigned_count, skipped_count, errors)
-                assigned, skipped, errors = task_store.assign_tasks_to_sprint(task_ids, target_sprint)
-                
-                if assigned > 0:
-                    st.success(f"✅ Added Sprint {target_sprint} to {assigned} task(s)")
-                    if skipped > 0:
-                        st.warning(f"⚠️ {skipped} task(s) skipped:")
-                        with st.expander("View details"):
-                            for err in errors:
-                                st.write(f"• {err}")
-                    st.balloons()
-                    st.rerun()
-                elif skipped > 0:
-                    st.error(f"❌ All {skipped} task(s) were skipped:")
-                    for err in errors:
-                        st.write(f"• {err}")
-                else:
-                    st.error("❌ Failed to assign tasks. Please try again.")
-        else:
-            st.warning("Please select a target sprint to assign tasks.")
 
 # Footer
 st.divider()

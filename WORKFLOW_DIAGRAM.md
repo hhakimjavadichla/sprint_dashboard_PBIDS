@@ -262,6 +262,10 @@ Export Fresh iTrack Data
 8. ✅ **Fresh iTrack data** used to update carryover tasks
 9. ✅ **Forever tickets excluded** from all metrics (Standing/Miscellaneous Meetings)
 10. ✅ **Team member filtering** - only configured members shown
+11. ✅ **Field Ownership Model** - iTrack fields updated, dashboard fields preserved
+12. ✅ **TaskNum as unique key** - used to match existing tasks during import
+13. ✅ **SprintsAssigned tracks all sprints** - comma-separated list (v1.2)
+14. ✅ **Sprint removal only affects current sprint** - other assignments preserved (v1.2)
 
 ## Status Workflow (iTrack)
 
@@ -279,8 +283,77 @@ Logged → Assigned → Accepted → Waiting → Completed/Closed
 | Completed/Closed | 🟢 Green | Finished |
 | Canceled | ⚪ Gray | Excluded |
 
----
+## Field Ownership Model (v1.1)
+
+Defines which system owns each field during imports:
+
+```mermaid
+flowchart LR
+    subgraph iTrack["iTrack-Owned Fields"]
+        A1[TaskNum]
+        A2[Status]
+        A3[TicketStatus]
+        A4[AssignedTo]
+        A5[Subject]
+        A6[Dates]
+    end
+    
+    subgraph Dashboard["Dashboard-Owned Fields"]
+        B1[SprintsAssigned]
+        B2[GoalType]
+        B3[Priority]
+        B4[Comments]
+        B5[HoursEstimated]
+    end
+    
+    Import[iTrack Import] -->|✅ Updates| iTrack
+    Import -->|🚫 Preserves| Dashboard
+    
+    style iTrack fill:#e1f5ff
+    style Dashboard fill:#fff4e1
+```
+
+| Ownership | Fields | Import Behavior |
+|-----------|--------|----------------|
+| **iTrack-owned** | TaskNum, TicketNum, Status, TicketStatus, AssignedTo, Subject, CustomerName, dates | Always updated |
+| **Dashboard-owned** | SprintsAssigned, CustomerPriority, FinalPriority, GoalType, HoursEstimated, Comments | Never overwritten |
+| **Computed** | OriginalSprintNumber, TicketType, DaysOpen | Calculated |
+
+## Sprint Assignment & Removal (v1.2)
+
+```mermaid
+flowchart TB
+    subgraph Assignment ["Assign to Sprint (Work Backlogs)"]
+        A1[Select tasks with checkboxes] --> A2[Choose target sprint]
+        A2 --> A3[Click Assign button]
+        A3 --> A4[Sprint added to SprintsAssigned]
+    end
+    
+    subgraph Removal ["Remove from Sprint (Sprint Planning)"]
+        R1[View Sprint Planning for Sprint X] --> R2[Set SprintNumber to blank]
+        R2 --> R3[Click Save Changes]
+        R3 --> R4[Sprint X removed from SprintsAssigned]
+    end
+    
+    subgraph Examples ["SprintsAssigned Examples"]
+        E1["Task in '1' only"] -->|Remove from Sprint 1| E2["Becomes '' (backlog)"]
+        E3["Task in '1, 2'"] -->|Remove from Sprint 1| E4["Becomes '2'"]
+        E5["Task in '1, 2, 3'"] -->|Remove from Sprint 2| E6["Becomes '1, 3'"]
+    end
+    
+    style Assignment fill:#e1ffe1
+    style Removal fill:#ffe1e1
+    style Examples fill:#f0f0f0
+```
+
+### Editable Fields by Page (v1.2)
+
+| Page | Editable Fields | Save Method |
+|------|-----------------|-------------|
+| **Work Backlogs** | FinalPriority, GoalType, DependencyOn, DependenciesLead, DependencySecured, Comments | Save Changes button |
+| **Section View** | CustomerPriority, DependencyOn, DependenciesLead, Comments | Save Changes button |
+| **Sprint Planning** | All above + SprintNumber (blank=remove), HoursEstimated | Save Changes button |
 
 ---
 
-**Version 0.2.0** — Updated December 15, 2024
+**Version 1.2** — Updated January 13, 2026

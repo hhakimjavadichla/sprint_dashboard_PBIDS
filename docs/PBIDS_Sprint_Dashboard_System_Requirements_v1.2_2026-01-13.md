@@ -1,7 +1,7 @@
 # PBIDS Sprint Dashboard - System Requirements Document
 
-**Version:** 1.0  
-**Date:** January 5, 2026  
+**Version:** 1.2  
+**Date:** January 13, 2026  
 **Document Type:** Functional Requirements Specification  
 
 ---
@@ -26,6 +26,8 @@ The Sprint Dashboard manages task workflows across bi-weekly sprint cycles. It i
 - **Ticket**: A parent entity that may contain multiple tasks
 - **Carryover**: Open tasks that automatically move to the next sprint
 - **TAT (Turn-Around Time)**: Target completion timeframes by ticket type
+- **Field Ownership Model**: Defines which system (iTrack vs Dashboard) owns each field during imports
+- **SprintsAssigned**: Comma-separated list tracking all sprint assignments for a task (v1.2)
 
 ---
 
@@ -59,14 +61,127 @@ The Sprint Dashboard manages task workflows across bi-weekly sprint cycles. It i
 
 ---
 
-## 4. Page Specifications
+## 4. Editable Fields by Page (v1.2)
 
-### 4.1 Home Page (app.py)
+This section documents which fields can be edited on each page and by whom.
+
+### 4.1 Work Backlogs Page (Admin Only)
+
+| Field | Editor Type | Options/Format |
+|-------|-------------|----------------|
+| FinalPriority | Dropdown | 0, 1, 2, 3, 4, 5 |
+| GoalType | Dropdown | '', 'Mandatory', 'Stretch' |
+| DependencyOn | Dropdown | '', 'Yes', 'No' |
+| DependenciesLead | Text popup | Free text (max 1000 chars) |
+| DependencySecured | Dropdown | '', 'Yes', 'Pending', 'No' |
+| Comments | Text popup | Free text (max 1000 chars) |
+
+**Sprint Assignment:** Select tasks via checkbox, choose target sprint, click "Assign" button.
+
+### 4.2 Section View Page (Admin, Section Manager, Section User)
+
+| Field | Editor Type | Options/Format |
+|-------|-------------|----------------|
+| CustomerPriority | Dropdown | 0, 1, 2, 3, 4, 5 |
+| DependencyOn | Dropdown | '', 'Yes', 'No' |
+| DependenciesLead | Text popup | Free text |
+| Comments | Text popup | Free text |
+
+**Note:** Only open tasks can be edited. PBIDS Users have read-only access.
+
+### 4.3 Sprint Planning Page (Admin Only)
+
+| Field | Editor Type | Options/Format |
+|-------|-------------|----------------|
+| SprintNumber | Dropdown | All sprint numbers + blank (to remove from sprint) |
+| CustomerPriority | Dropdown | 0, 1, 2, 3, 4, 5 |
+| FinalPriority | Dropdown | 0, 1, 2, 3, 4, 5 |
+| GoalType | Dropdown | '', 'Mandatory', 'Stretch' |
+| DependencyOn | Dropdown | '', 'Yes', 'No' |
+| DependenciesLead | Text popup | Free text |
+| DependencySecured | Dropdown | '', 'Yes', 'Pending', 'No' |
+| Comments | Text popup | Free text |
+| HoursEstimated | Numeric | Decimal hours |
+
+**Sprint Removal:** Set SprintNumber to blank to remove task from current sprint (v1.2).
+
+---
+
+## 5. Sprint Assignment and Removal Logic (v1.2)
+
+### 5.1 SprintsAssigned Field
+
+The `SprintsAssigned` field is a comma-separated list that tracks all sprint assignments for a task.
+
+**Examples:**
+- `"1"` - Task assigned to Sprint 1 only
+- `"1, 2"` - Task assigned to both Sprint 1 and Sprint 2
+- `""` (empty) - Task in backlog, not assigned to any sprint
+
+### 5.2 Assigning Tasks to Sprints
+
+**Location:** Work Backlogs & Sprint Assignment page
+
+**Process:**
+1. Admin selects tasks using checkboxes in the grid
+2. Admin selects target sprint from dropdown
+3. Admin clicks "Assign {N} Task(s) to Sprint {X}" button
+4. System adds sprint number to SprintsAssigned field
+5. Task appears in Sprint Planning for that sprint
+
+**Behavior:**
+- If task already assigned to that sprint: Skipped with message
+- SprintsAssigned updates: `"1"` → `"1, 2"` (adds Sprint 2)
+- Task can be assigned to multiple sprints
+
+### 5.3 Removing Tasks from Sprints
+
+**Location:** Sprint Planning page
+
+**Process:**
+1. Admin views Sprint Planning for Sprint X
+2. Admin changes SprintNumber dropdown to blank (empty)
+3. Admin clicks "Save Changes"
+4. System removes Sprint X from SprintsAssigned field
+
+**Behavior:**
+- Only removes the CURRENT sprint from SprintsAssigned
+- Task remains in other assigned sprints
+- If task was only in Sprint X: SprintsAssigned becomes empty (true backlog)
+
+**Example:**
+| Before | Action | After |
+|--------|--------|-------|
+| SprintsAssigned: "1" | Remove from Sprint 1 | SprintsAssigned: "" (backlog) |
+| SprintsAssigned: "1, 2" | Remove from Sprint 1 | SprintsAssigned: "2" |
+| SprintsAssigned: "1, 2, 3" | Remove from Sprint 2 | SprintsAssigned: "1, 3" |
+
+### 5.4 Moving Tasks Between Sprints
+
+**Location:** Sprint Planning page
+
+**Process:**
+1. Admin views Sprint Planning for Sprint X
+2. Admin changes SprintNumber dropdown to different sprint number (e.g., Sprint Y)
+3. Admin clicks "Save Changes"
+4. System removes Sprint X and adds Sprint Y to SprintsAssigned
+
+**Example:**
+| Before | Action (in Sprint 1 Planning) | After |
+|--------|-------------------------------|-------|
+| SprintsAssigned: "1" | Change to Sprint 2 | SprintsAssigned: "2" |
+| SprintsAssigned: "1, 3" | Change to Sprint 2 | SprintsAssigned: "2, 3" |
+
+---
+
+## 6. Page Specifications
+
+### 6.1 Home Page (app.py)
 
 **Page Title:** "Sprint Dashboard (Prototype)"  
 **Page Icon:** 📊
 
-#### 4.1.1 Unauthenticated View
+#### 6.1.1 Unauthenticated View
 - Welcome message with application title
 - Login form with:
   - **Username** field
@@ -74,7 +189,7 @@ The Sprint Dashboard manages task workflows across bi-weekly sprint cycles. It i
   - **"🔐 Login"** button
 - Help section explaining the application
 
-#### 4.1.2 Authenticated View (Sidebar)
+#### 6.1.2 Authenticated View (Sidebar)
 - **User Information Display:**
   - "👤 Logged in as: {display_name}"
   - "🔑 Role: {role}"
@@ -86,7 +201,7 @@ The Sprint Dashboard manages task workflows across bi-weekly sprint cycles. It i
   - Date range (MM/DD - MM/DD/YYYY format)
   - Status indicator (🟢 Active, 🟡 Upcoming, etc.)
 
-#### 4.1.3 Main Content (When Authenticated)
+#### 6.1.3 Main Content (When Authenticated)
 - Sprint overview with metrics:
   - **Total Tasks** count
   - **By Status** breakdown (Completed, In Progress, Pending)
@@ -96,18 +211,18 @@ The Sprint Dashboard manages task workflows across bi-weekly sprint cycles. It i
 
 ---
 
-### 4.2 Dashboard Page
+### 6.2 Dashboard Page
 
 **Page Title:** "Dashboard (Prototype)"  
 **Page Icon:** 📊  
 **Access:** Authenticated users
 
-#### 4.2.1 Header Section
+#### 6.2.1 Header Section
 - Title: "📊 Dashboard"
 - Caption: "_Prototype — PBIDS Team_"
 - User info display
 
-#### 4.2.2 Task Overview Metrics (6 columns)
+#### 6.2.2 Task Overview Metrics (6 columns)
 Row 1 - Ticket counts:
 - **Total Current Tickets** - unique ticket count
 - **SR** - Service Request count (help: "SR (Service Request)")
@@ -118,16 +233,16 @@ Row 1 - Ticket counts:
 
 Row 2 - Task counts (same categories)
 
-#### 4.2.3 Sidebar Filters
+#### 6.2.3 Sidebar Filters
 - **Section** - multiselect, default "All"
 - **Status** - multiselect, default "All"
 - **Priority** - multiselect, default "All"
 - **Assignee** - multiselect, default "All"
 
-#### 4.2.4 Tabs
+#### 6.2.4 Tabs
 **Tab 1: "All Tasks"**
 - Data table with all current sprint tasks
-- Columns displayed in order (see Section 5.1 for column definitions)
+- Columns displayed in order (see Section 7.1 for column definitions)
 - Export buttons: "📥 Export CSV", "📥 Export Excel"
 
 **Tab 2: "At Risk"**
@@ -145,17 +260,17 @@ Row 2 - Task counts (same categories)
 
 ---
 
-### 4.3 Upload Tasks Page
+### 6.3 Upload Tasks Page
 
 **Page Title:** "Upload Tasks"  
 **Page Icon:** 📤  
 **Access:** Admin only
 
-#### 4.3.1 Header
+#### 6.3.1 Header
 - Title: "📤 Upload Tasks"
 - Caption: "_PBIDS Team_"
 
-#### 4.3.2 Workflow Instructions (Expander: "📋 How Task Assignment Works")
+#### 6.3.2 Workflow Instructions (Expander: "📋 How Task Assignment Works")
 ```
 ### Simplified Workflow
 
@@ -165,10 +280,18 @@ Row 2 - Task counts (same categories)
 4. **Plan and estimate** in Sprint Planning page
 5. **Repeat each sprint** - upload new extract to update
 
+### Field Ownership Model (v1.1)
+
+The import system uses a **Field Ownership Model** to determine which fields are updated:
+
+- **iTrack-owned fields**: Always updated from imports (Status, TicketStatus, AssignedTo, Subject, dates)
+- **Dashboard-owned fields**: Never overwritten by imports (SprintsAssigned, GoalType, Priority, Comments)
+- **Computed fields**: Calculated during import (OriginalSprintNumber, TicketType, DaysOpen)
+
 ### Task Assignment Logic
 
-- **New Tasks**: When uploaded, new tasks appear in Work Backlogs with no sprint assignment
-- **Existing Tasks**: Task data (status, assignee, etc.) is updated from the new extract
+- **New Tasks**: Added to Work Backlogs with default dashboard field values
+- **Existing Tasks**: Only iTrack-owned fields updated; dashboard annotations preserved
 - **Sprint Assignment**: Admins manually assign tasks to sprints from Work Backlogs page
 - **Carryover**: Open tasks automatically carry over to future sprints until closed
 
@@ -181,54 +304,92 @@ Row 2 - Task counts (same categories)
 5. "SprintsAssigned" column tracks: "10, 11, 12" (all sprints)
 ```
 
-#### 4.3.3 Upload Section: iTrack Task Export
+#### 6.3.3 Upload Section: iTrack Task Export
 - **File uploader**: CSV files only
 - **Preview**: Shows first 5 rows of uploaded data
-- **"📤 Import Tasks"** button (primary)
-- Success message: "✅ Imported {count} tasks ({new} new, {updated} updated)"
+- **Import Rules Display:**
+  ```
+  **Import Rules (Field Ownership Model):**
+  - 🔄 **Existing tasks** → Only iTrack fields updated (Status, TicketStatus, AssignedTo, dates)
+  - 🛡️ **Dashboard annotations preserved** → SprintsAssigned, Priority, GoalType, Comments
+  - ✅ **Completed tasks** → Auto-assigned to their original sprint
+  - 📋 **Open tasks** → Go to Work Backlogs for admin assignment
+  ```
+- **"📥 Import All Tasks"** button (primary)
 
-#### 4.3.4 Upload Section: iTrack Worklog Export
+#### 6.3.4 Import Report (After Import)
+Success message: "✅ Import Complete!"
+
+**Summary Metrics (4 columns):**
+- **Total Processed** - all tasks in import file
+- **New Tasks** - first time imported (help: "First time imported")
+- **Updated Tasks** - iTrack fields changed (help: "iTrack fields changed")
+- **Unchanged** - no changes detected (help: "No changes detected")
+
+**Detailed Import Report Section:**
+
+1. **🆕 New Tasks by Status** (expandable, expanded by default)
+   - Table showing count of new tasks grouped by status
+   - Status indicators: 🟢 for open, 🔴 for closed
+
+2. **🔄 Task Status Changes** (expandable, expanded by default)
+   - Aggregated transitions table (e.g., "Assigned → Completed: 5")
+   - Nested expander: "View individual task changes" with detailed list
+
+3. **🎫 Ticket Status Changes** (expandable, expanded by default)
+   - Aggregated transitions table
+   - Nested expander: "View individual ticket changes" with detailed list
+
+4. **📝 Field Changes Summary** (expandable, collapsed by default)
+   - Count of changes per iTrack field (e.g., "Status: 5, AssignedTo: 3")
+
+#### 6.3.5 Upload Section: iTrack Worklog Export
 - **File uploader**: CSV files only  
 - **Preview**: Shows first 5 rows
+- **Import Strategy Note**: "Date-based merge — records for dates in the upload are updated; records for dates NOT in the upload are preserved."
 - **"📤 Import Worklogs"** button
-- Success message: "✅ Imported {count} worklog entries"
+- Success message: "✅ Successfully imported {count} worklog entries for {dates} dates (preserved {preserved} existing records for other dates)"
 
-#### 4.3.5 Current Data Status
+**Worklog Import Statistics (6 metrics in 2 rows):**
+- Row 1: Total Rows, Valid Logs, Dates in Upload
+- Row 2: Records Replaced, Records Preserved, Skipped
+
+#### 6.3.6 Current Data Status
 - Task store status (total tasks, sprints with tasks)
 - Worklog status (total entries, date range)
 
 ---
 
-### 4.4 Sprint View Page
+### 6.4 Sprint View Page
 
 **Page Title:** "Sprint View (Prototype)"  
 **Page Icon:** 🧪  
 **Access:** All authenticated users
 
-#### 4.4.1 Header
+#### 6.4.1 Header
 - Title: "Sprint View"
 - Caption: "_Prototype — PBIDS Team_"
 
-#### 4.4.2 Sprint Selector
+#### 6.4.2 Sprint Selector
 - Dropdown: "Select Sprint"
 - Format: "Sprint {N}: {SprintName} (MM/DD - MM/DD) [{count} tasks]"
 - Status indicator: "Current", "Past", or "Upcoming"
 
-#### 4.4.3 Sprint Info Bar
+#### 6.4.3 Sprint Info Bar
 - Format: "**{SprintName}** — {StartDate} to {EndDate}"
 
-#### 4.4.4 Summary Metrics (5 columns)
+#### 6.4.4 Summary Metrics (5 columns)
 - **Total Tasks** - all tasks in sprint
 - **Carryover** - tasks from previous sprints (help: "Open tasks from previous sprints")
 - **Original** - tasks originally assigned to this sprint (help: "Tasks assigned to this sprint")
 - **Open** - tasks not in closed status
 - **Closed** - tasks in closed status
 
-#### 4.4.5 Tabs
+#### 6.4.5 Tabs
 
 **Tab 1: "All Tasks"**
 - Full task table (read-only)
-- All columns visible
+- All columns visible including **TicketStatus** (v1.1)
 - Export buttons: "📥 Export CSV", "📥 Export Excel"
 
 **Tab 2: "Update Status"** (Admin only)
@@ -257,17 +418,17 @@ Row 2 - Task counts (same categories)
 
 ---
 
-### 4.5 Section View Page
+### 6.5 Section View Page
 
 **Page Title:** "Section View (Prototype)"  
 **Page Icon:** 🧪  
 **Access:** All authenticated users
 
-#### 4.5.1 Header
+#### 6.5.1 Header
 - Title: "Section View"
 - Caption: "_Prototype — PBIDS Team_"
 
-#### 4.5.2 Role-Based Section Display
+#### 6.5.2 Role-Based Section Display
 
 **For Admin/PBIDS User:**
 - Info message: "👑 **{Role} View{Read-only note}**: Select a section to view or see all sections"
@@ -277,13 +438,14 @@ Row 2 - Task counts (same categories)
 - If no section assigned: Error "⚠️ No section assigned to your account"
 - If section assigned: Info "👁️ **{Role}**: Viewing tasks for **{section(s)}**"
 
-#### 4.5.3 Summary Metrics
+#### 6.5.3 Summary Metrics
 Same format as Dashboard (6 columns × 2 rows for tickets and tasks by type)
 
-#### 4.5.4 Task Table
+#### 6.5.4 Task Table
 - Title: "### Tasks"
 - Caption: "💡 You can edit **Priority** for open tasks. Double-click the Priority cell to change it."
 - Column descriptions help expander: "❓ Column Descriptions"
+- Includes **TicketStatus** column (v1.1)
 
 **Editable columns (for Section Manager/User, marked with ✏️):**
 - CustomerPriority (dropdown: NotAssigned, 0, 1, 2, 3, 4, 5)
@@ -293,12 +455,12 @@ Same format as Dashboard (6 columns × 2 rows for tickets and tasks by type)
 
 **For PBIDS Users:** All columns read-only with message "🔒 **Read-only view** - PBIDS Users cannot edit task data."
 
-#### 4.5.5 Save and Export
+#### 6.5.5 Save and Export
 - **"💾 Save Changes"** button (for users who can edit)
 - Caption: "Editable fields: CustomerPriority, Dependency, DependencyLead(s), Comments. Only open tasks can be edited."
 - Export button: "📥 Export to Excel ({count} tasks)"
 
-#### 4.5.6 Breakdowns
+#### 6.5.6 Breakdowns
 - **📊 Status Breakdown** - count and percentage by status
 - **🎯 Priority Breakdown** - count and percentage with labels:
   - 🔴 Critical (5)
@@ -308,13 +470,13 @@ Same format as Dashboard (6 columns × 2 rows for tickets and tasks by type)
   - ⚪ Minimal (1)
   - ⚫ None (0)
 
-#### 4.5.7 At-Risk Tasks Section
+#### 6.5.7 At-Risk Tasks Section
 - Displayed if at-risk tasks exist
 - Title: "### At-Risk Tasks"
 - Warning: "⚠️ {count} tasks are at risk of missing TAT"
 - Table with: TaskNum, Subject, DaysOpen, TicketType, Status, AssignedTo
 
-#### 4.5.8 Help Section (Expander: "About This View")
+#### 6.5.8 Help Section (Expander: "About This View")
 ```
 {Viewing message based on user role}
 
@@ -328,17 +490,17 @@ Export buttons available for offline analysis.
 
 ---
 
-### 4.6 Analytics Page
+### 6.6 Analytics Page
 
 **Page Title:** "Analytics"  
 **Page Icon:** 📈  
 **Access:** All authenticated users (section-filtered for non-admins)
 
-#### 4.6.1 Header
+#### 6.6.1 Header
 - Title: "📈 Sprint Analytics"
 - Section filter message for non-admins: "👁️ Viewing analytics for: **{section}**"
 
-#### 4.6.2 Tabs
+#### 6.6.2 Tabs
 
 **Tab 1: "📊 Overview"**
 - Key metrics (5 columns):
@@ -383,23 +545,23 @@ Export buttons available for offline analysis.
 
 ---
 
-### 4.7 Completed Tasks Page
+### 6.7 Completed Tasks Page
 
 **Page Title:** "Completed Tasks"  
 **Page Icon:** ✅  
 **Access:** Admin only
 
-#### 4.7.1 Header
+#### 6.7.1 Header
 - Title: "✅ Completed Tasks"
 - Caption: "_Historical view of all completed tasks — PBIDS Team_"
 
-#### 4.7.2 Summary Metrics (4 columns)
+#### 6.7.2 Summary Metrics (4 columns)
 - ✅ Completed Tasks
 - 🎫 Unique Tickets
 - 📊 Sections
 - ⏱️ Total Hours
 
-#### 4.7.3 Tabs
+#### 6.7.3 Tabs
 
 **Tab 1: "📋 All Completed Tasks"**
 - Filters (4 columns): Section, Ticket Type, Assignee, Completed In Sprint
@@ -427,22 +589,22 @@ Export buttons available for offline analysis.
 - Multi-select filters: Sprint, Section, Assignee, Ticket Type, Customer
 - Results table with export options
 
-#### 4.7.4 Footer
+#### 6.7.4 Footer
 - Note: "💡 **Note:** This page shows all completed tasks for historical analysis. Sprint Planning is for current and future sprints only."
 
 ---
 
-### 4.8 Sprint Planning Page
+### 6.8 Sprint Planning Page
 
 **Page Title:** "Sprint Planning"  
 **Page Icon:** ✏️  
 **Access:** Admin only
 
-#### 4.8.1 Header
+#### 6.8.1 Header
 - Title: "✏️ Sprint Planning"
 - Caption: "_PBIDS Team_"
 
-#### 4.8.2 Instructions (Expander: "ℹ️ How to Use This Page")
+#### 6.8.2 Instructions (Expander: "ℹ️ How to Use This Page")
 ```
 ### Planning Workflow
 
@@ -452,41 +614,46 @@ Export buttons available for offline analysis.
 4. **Monitor capacity** - warnings appear if anyone exceeds 52 hours
 
 ### Field Types
-- **Dropdown fields:** SprintNumber, CustomerPriority (0-5), DependencySecured, Status, TicketType, Section
+- **Dropdown fields:** SprintNumber (blank = remove from sprint), CustomerPriority (0-5), DependencySecured, Status, TicketType, Section
 - **Numeric fields:** DaysOpen, HoursEstimated, HoursSpent
 - **Free text fields:** All other fields
+
+### Sprint Assignment (v1.2)
+- **Change SprintNumber to blank**: Removes task from THIS sprint only
+- **Change SprintNumber to different sprint**: Moves task to that sprint
+- Tasks can be in multiple sprints - SprintsAssigned tracks all
 
 ### Pre-populated Fields (from iTrack or calculated)
 - **DaysOpen** - Days since ticket creation (calculated)
 - **HoursSpent** - From iTrack worklog (TaskMinutesSpent / 60)
-- **TicketType, Section, CustomerName, Status, AssignedTo, Subject** - From iTrack upload
+- **TicketType, Section, CustomerName, Status, TicketStatus, AssignedTo, Subject** - From iTrack upload
 - **TicketNum, TaskNum, TicketCreatedDt, TaskCreatedDt** - From iTrack upload
 
 ### Tips
-- Changing SprintNumber moves the task to that sprint on save
+- Setting SprintNumber to blank removes the task from the current sprint only
 - Use filters to focus on specific sections or assignees
 - Capacity validation happens automatically
 ```
 
-#### 4.8.3 Sprint Selector
+#### 6.8.3 Sprint Selector
 - Only current and future sprints shown
 - Format: "Sprint {N}: {SprintName} (MM/DD - MM/DD) [{count} tasks]"
 - Task counts exclude completed tasks
 
-#### 4.8.4 Sidebar Filters
+#### 6.8.4 Sidebar Filters
 - Section (multiselect)
 - Assigned To (multiselect)
 - Status (multiselect)
 - Checkbox: "Show only tasks without estimates"
 
-#### 4.8.5 Summary Metrics
+#### 6.8.5 Summary Metrics
 Same format as Dashboard (tickets and tasks by type)
 
-#### 4.8.6 Editable Task Table
+#### 6.8.6 Editable Task Table
 Caption: "✏️ = Editable column (double-click to edit). Changes are saved when you click 'Save Changes' below."
 
 **Editable columns (marked with ✏️):**
-- SprintNumber (dropdown of all sprint numbers)
+- SprintNumber (dropdown: blank + all sprint numbers) - **blank = remove from this sprint (v1.2)**
 - CustomerPriority (dropdown: NotAssigned, 0-5)
 - FinalPriority (dropdown: NotAssigned, 0-5)
 - GoalType (dropdown: '', 'Mandatory', 'Stretch')
@@ -501,11 +668,11 @@ Caption: "✏️ = Editable column (double-click to edit). Changes are saved whe
 - TaskOrigin (New/Carryover with color coding)
 - SprintsAssigned
 - TicketNum, TaskCount, TicketType, Section, CustomerName, TaskNum
-- Status, AssignedTo, Subject
+- Status, **TicketStatus** (v1.1), AssignedTo, Subject
 - TicketCreatedDt, TaskCreatedDt
 - DaysOpen, TaskHoursSpent, TicketHoursSpent
 
-#### 4.8.7 Capacity Summary Section
+#### 6.8.7 Capacity Summary Section
 - Title: "### 📊 Capacity Summary by Person"
 - Caption: "**Limits:** Mandatory ≤ 48 hrs (60%), Stretch ≤ 16 hrs (20%), Total = 80 hrs"
 - Per-person breakdown:
@@ -514,12 +681,12 @@ Caption: "✏️ = Editable column (double-click to edit). Changes are saved whe
   - 🟢/🔴 Stretch: hours / limit
   - 🟢/🔴 Total: hours / limit
 
-#### 4.8.8 Save and Export
+#### 6.8.8 Save and Export
 - **"💾 Save Changes"** button (primary)
 - Caption: "Changes are only saved when you click 'Save Changes'"
 - **"📥 Export"** button
 
-#### 4.8.9 Capacity Breakdown
+#### 6.8.9 Capacity Breakdown
 - Color-coded table:
   - OVERLOAD: red background (#ffe6e6)
   - WARNING: yellow background (#fff3cd)
@@ -527,16 +694,16 @@ Caption: "✏️ = Editable column (double-click to edit). Changes are saved whe
 
 ---
 
-### 4.9 Work Backlogs & Sprint Assignment Page
+### 6.9 Work Backlogs & Sprint Assignment Page
 
 **Page Title:** "Work Backlogs & Sprint Assignment"  
 **Page Icon:** 📋  
 **Access:** Admin only
 
-#### 4.9.1 Header
+#### 6.9.1 Header
 - Title: "📋 Work Backlogs & Sprint Assignment"
 
-#### 4.9.2 Instructions (Expander: "ℹ️ How to Use This Page")
+#### 6.9.2 Instructions (Expander: "ℹ️ How to Use This Page")
 ```
 All **open tasks** appear here. As admin, you can:
 - **Click checkbox** to select tasks for sprint assignment
@@ -544,55 +711,64 @@ All **open tasks** appear here. As admin, you can:
 - Tasks can be assigned to multiple sprints over time
 - Track sprint assignment history in the **Sprints Assigned** column
 - Completed tasks are automatically moved to the **Completed Tasks** page
+- **Edit fields** (FinalPriority, GoalType, Dependencies, Comments) directly in the table
 ```
 
-#### 4.9.3 Summary Metrics
+#### 6.9.3 Summary Metrics
 Same format as Dashboard (tickets and tasks by type)
 
-#### 4.9.4 Sprint Assignment Section
+#### 6.9.4 Sprint Assignment Section
 - Title: "### 📤 Assign Tasks to Sprint"
 - **Target Sprint** dropdown (current and future sprints only)
 - Format: "Sprint {N}: MM/DD/YYYY - MM/DD/YYYY"
 
-#### 4.9.5 Task Selection Table
+#### 6.9.5 Task Selection and Editing Table (v1.2)
 - Checkbox column for selection (header checkbox for select all)
 - First column: "Sprints Assigned" (tracks all sprint assignments)
-- All task columns (read-only in this view)
+- **Editable columns (marked with ✏️):**
+  - FinalPriority (dropdown)
+  - GoalType (dropdown)
+  - DependencyOn (dropdown)
+  - DependenciesLead (text popup)
+  - DependencySecured (dropdown)
+  - Comments (text popup)
+- All other task columns (read-only)
 - Multi-task ticket grouping with alternating row colors
 
-#### 4.9.6 Export
-- Button: "📥 Export to Excel ({count} tasks)"
+#### 6.9.6 Save and Export
+- **"💾 Save Changes"** button - saves edits to editable fields
+- Export button: "📥 Export to Excel ({count} tasks)"
 
-#### 4.9.7 Assignment Action
-- When no tasks selected: "👆 Select one or more tasks from the table above to assign to a sprint."
+#### 6.9.7 Assignment Action
+- When no tasks selected: "👆 Select tasks from the table below to assign to the target sprint."
 - When tasks selected:
   - Success message: "✅ **{N} task(s) selected**"
   - Expander: "📋 View Selected Tasks ({N})"
   - Button: "📤 Assign {N} Task(s) to Sprint {SprintNum}" (primary)
   - Success: "✅ Added Sprint {N} to {count} task(s)"
 
-#### 4.9.8 Footer
+#### 6.9.8 Footer
 - Tip: "💡 **Tip:** Open tasks stay in the backlog until completed. Assign them to sprints as needed - the Sprints Assigned column tracks all assignments."
 
 ---
 
-### 4.10 Worklog Activity Page
+### 6.10 Worklog Activity Page
 
 **Page Title:** "Worklog Activity"  
 **Page Icon:** 📊  
 **Access:** Admin only
 
-#### 4.10.1 Header
+#### 6.10.1 Header
 - Title: "📊 Worklog Activity Report"
 - Caption: "_Team member activity tracking based on iTrack worklog data — PBIDS Team_"
 
-#### 4.10.2 Summary Metrics (4 columns)
+#### 6.10.2 Summary Metrics (4 columns)
 - 📝 Total Log Entries
 - ⏱️ Total Hours Logged
 - 👥 Team Members
 - 🎯 Current Sprint
 
-#### 4.10.3 Tabs
+#### 6.10.3 Tabs
 
 **Tab 1: "📅 Daily Activity"**
 - Title: "Daily Activity by User"
@@ -630,17 +806,17 @@ Same format as Dashboard (tickets and tasks by type)
 
 ---
 
-### 4.11 Admin Configuration Page
+### 6.11 Admin Configuration Page
 
 **Page Title:** "Admin Configuration"  
 **Page Icon:** ⚙️  
 **Access:** Admin only
 
-#### 4.11.1 Header
+#### 6.11.1 Header
 - Title: "⚙️ Admin Configuration"
 - Caption: "_Configure sprint calendar and user accounts — PBIDS Team_"
 
-#### 4.11.2 Tabs
+#### 6.11.2 Tabs
 
 **Tab 1: "📅 Sprint Calendar"**
 
@@ -729,21 +905,21 @@ Same format as Dashboard (tickets and tasks by type)
 
 ---
 
-### 4.12 Sprint Feedback Page
+### 6.12 Sprint Feedback Page
 
 **Page Title:** "Sprint Feedback (Prototype)"  
 **Page Icon:** 💬  
 **Access:** Section Managers and Admins only
 
-#### 4.12.1 Header
+#### 6.12.1 Header
 - Title: "💬 Sprint Feedback"
 - Caption: "_Prototype — PBIDS Team_"
 
-#### 4.12.2 Access Control
+#### 6.12.2 Access Control
 - Non-Section Managers see: "⚠️ This page is only accessible to Section Managers"
 - Info: "Section Managers can submit feedback for recently completed sprints."
 
-#### 4.12.3 Tabs
+#### 6.12.3 Tabs
 
 **Tab 1: "📝 Submit Feedback"**
 - Title: "Submit Feedback for Sprint {N}" (where N = current sprint - 1)
@@ -775,7 +951,7 @@ Same format as Dashboard (tickets and tasks by type)
 - Grouped by sprint (most recent first)
 - Each feedback shows: Section, Satisfaction score, submission date, comments
 
-#### 4.12.4 Help Section (Expander: "ℹ️ About Sprint Feedback")
+#### 6.12.4 Help Section (Expander: "ℹ️ About Sprint Feedback")
 ```
 ### How Sprint Feedback Works
 
@@ -795,9 +971,9 @@ but you cannot edit past submissions.
 
 ---
 
-## 5. Data Model
+## 7. Data Model
 
-### 5.1 Task Fields
+### 7.1 Task Fields
 
 | Field Name | Description | Source | Editable By |
 |------------|-------------|--------|-------------|
@@ -808,14 +984,15 @@ but you cannot edit past submissions.
 | SprintEndDt | Sprint end date | System | None |
 | OriginalSprintNumber | First sprint the task was assigned to | System | None |
 | TaskOrigin | "New" or "Carryover" | Calculated | None |
-| SprintsAssigned | Comma-separated list of all sprints | System | None |
+| SprintsAssigned | Comma-separated list of all sprints (v1.2) | System | None |
 | TicketNum | Parent ticket number | iTrack | None |
-| TaskNum | Task number | iTrack | None |
+| TaskNum | Task number (**Primary Key** for imports) | iTrack | None |
 | TaskCount | Position in ticket (e.g., "1/3") | Calculated | None |
 | TicketType | SR, PR, IR, NC, or AD | iTrack | None |
 | Section | Lab section/team | iTrack | None |
 | CustomerName | Customer name | iTrack | None |
 | Status | Task status | iTrack | Admin (Sprint View) |
+| **TicketStatus** | Ticket-level status (v1.1) | iTrack | None |
 | AssignedTo | Person assigned | iTrack | None |
 | Subject | Task subject/title | iTrack | None |
 | TicketCreatedDt | Ticket creation date | iTrack | None |
@@ -833,7 +1010,37 @@ but you cannot edit past submissions.
 | TaskHoursSpent | Hours spent on task | iTrack worklog | None |
 | TicketHoursSpent | Total hours on ticket | iTrack worklog | None |
 
-### 5.2 Priority Values
+### 7.2 Field Ownership Model (v1.1)
+
+Defines which system owns each field during imports:
+
+| Ownership | Fields | Import Behavior |
+|-----------|--------|-----------------|
+| **iTrack-owned** | TaskNum, TicketNum, Status, TicketStatus, AssignedTo, Subject, Section, CustomerName, TaskAssignedDt, TaskCreatedDt, TaskResolvedDt, TicketCreatedDt, TicketResolvedDt, TicketTotalTimeSpent, TaskMinutesSpent | Always updated from iTrack |
+| **Dashboard-owned** | SprintsAssigned, CustomerPriority, FinalPriority, GoalType, HoursEstimated, DependencyOn, DependenciesLead, DependencySecured, Comments, StatusUpdateDt | Never overwritten by import |
+| **Computed** | OriginalSprintNumber, TicketType, DaysOpen, UniqueTaskId, TaskCount | Calculated during import |
+
+**Import Behavior:**
+- **TaskNum** is used as the unique identifier to match existing tasks
+- **Existing tasks**: Only iTrack-owned fields are updated; dashboard annotations preserved
+- **New tasks**: Initialized with default values for dashboard fields
+
+### 7.3 Centralized Editable Fields Configuration (v1.2)
+
+All editable fields are centrally defined with their types and validation options:
+
+| Field | Type | Nullable | Options |
+|-------|------|----------|---------|
+| FinalPriority | int | Yes | 0, 1, 2, 3, 4, 5 |
+| GoalType | str | Yes | '', 'Mandatory', 'Stretch' |
+| DependencyOn | str | Yes | '', 'Yes', 'No' |
+| DependenciesLead | str | Yes | Free text |
+| DependencySecured | str | Yes | '', 'Yes', 'Pending', 'No' |
+| Comments | str | Yes | Free text |
+| CustomerPriority | int | Yes | 0, 1, 2, 3, 4, 5 |
+| HoursEstimated | float | Yes | Decimal |
+
+### 7.4 Priority Values
 
 | Value | Label | Color |
 |-------|-------|-------|
@@ -845,7 +1052,7 @@ but you cannot edit past submissions.
 | 0 | ⚫ None/No longer needed | Black/Gray |
 | NotAssigned | Not Assigned | Default |
 
-### 5.3 Status Values
+### 7.5 Status Values
 
 **Open Statuses:** Tasks remain in backlog and carry over
 - Pending
@@ -862,7 +1069,7 @@ but you cannot edit past submissions.
 - Done
 - Excluded from Carryover
 
-### 5.4 Ticket Types
+### 7.6 Ticket Types
 
 | Code | Full Name |
 |------|-----------|
@@ -872,7 +1079,7 @@ but you cannot edit past submissions.
 | NC | Non-classified IS Requests |
 | AD | Admin Request |
 
-### 5.5 User Data Model
+### 7.7 User Data Model
 
 | Field | Description |
 |-------|-------------|
@@ -883,7 +1090,7 @@ but you cannot edit past submissions.
 | DisplayName | Display name shown in UI |
 | Active | Boolean - whether user can log in |
 
-### 5.6 Sprint Calendar Data Model
+### 7.8 Sprint Calendar Data Model
 
 | Field | Description |
 |-------|-------------|
@@ -892,7 +1099,7 @@ but you cannot edit past submissions.
 | SprintStartDt | Start date |
 | SprintEndDt | End date |
 
-### 5.7 Feedback Data Model
+### 7.9 Feedback Data Model
 
 | Field | Description |
 |-------|-------------|
@@ -904,7 +1111,7 @@ but you cannot edit past submissions.
 | WhatDidNotGoWell | Free text |
 | SubmittedAt | Timestamp |
 
-### 5.8 Off Days Data Model
+### 7.10 Off Days Data Model
 
 | Field | Description |
 |-------|-------------|
@@ -912,7 +1119,7 @@ but you cannot edit past submissions.
 | TeamMember | Team member email/identifier |
 | OffDate | Date the team member is off |
 
-### 5.9 Worklog Data Model
+### 7.11 Worklog Data Model
 
 | Field | Description |
 |-------|-------------|
@@ -924,31 +1131,48 @@ but you cannot edit past submissions.
 
 ---
 
-## 6. Workflows
+## 8. Workflows
 
-### 6.1 Task Import Workflow
+### 8.1 Task Import Workflow (Updated v1.1)
 
 1. Admin exports tasks from iTrack (CSV format)
 2. Admin navigates to Upload Tasks page
 3. Admin uploads CSV file
 4. System validates CSV structure
-5. System imports tasks:
-   - New tasks are added to task store
-   - Existing tasks are updated with new data
-   - Tasks appear in Work Backlogs page
-6. Success message shows counts
+5. System imports tasks using **Field Ownership Model**:
+   - **New tasks**: Added to task store with default dashboard values
+   - **Existing tasks** (matched by TaskNum): Only iTrack-owned fields updated
+   - **Dashboard annotations preserved**: SprintsAssigned, Priority, GoalType, Comments untouched
+6. System displays **Detailed Import Report**:
+   - Summary metrics: Total Processed, New, Updated, Unchanged
+   - New tasks breakdown by status
+   - Task status changes (transitions)
+   - Ticket status changes (transitions)
+   - Field changes summary
+7. Tasks appear in Work Backlogs page
 
-### 6.2 Sprint Assignment Workflow
+### 8.2 Sprint Assignment Workflow (Updated v1.2)
 
 1. Admin navigates to Work Backlogs & Sprint Assignment page
 2. Admin views all open tasks
 3. Admin selects tasks using checkboxes
 4. Admin selects target sprint from dropdown
 5. Admin clicks "Assign to Sprint" button
-6. System adds sprint number to SprintsAssigned field
+6. System adds sprint number to **SprintsAssigned** field (comma-separated list)
 7. Tasks appear in Sprint Planning for that sprint
+8. **SprintsAssigned tracks history**: e.g., "1" → "1, 2" when adding Sprint 2
 
-### 6.3 Sprint Planning Workflow
+### 8.3 Sprint Removal Workflow (v1.2)
+
+1. Admin navigates to Sprint Planning page for Sprint X
+2. Admin locates task to remove from sprint
+3. Admin changes SprintNumber dropdown to **blank** (empty)
+4. Admin clicks "Save Changes"
+5. System removes Sprint X from SprintsAssigned field
+6. **Only Sprint X is removed** - task remains in other assigned sprints
+7. If task was only in Sprint X, SprintsAssigned becomes empty (true backlog)
+
+### 8.4 Sprint Planning Workflow
 
 1. Admin navigates to Sprint Planning page
 2. Admin selects sprint to plan
@@ -958,11 +1182,12 @@ but you cannot edit past submissions.
    - Priority fields
    - Dependencies
    - Comments
+   - **SprintNumber** (blank to remove, or different number to move)
 4. Admin monitors capacity summary
 5. Admin clicks Save Changes
 6. System validates and saves all changes
 
-### 6.4 Task Status Update Workflow
+### 8.5 Task Status Update Workflow
 
 1. Admin navigates to Sprint View page
 2. Admin selects sprint and goes to "Update Status" tab
@@ -972,7 +1197,7 @@ but you cannot edit past submissions.
 6. Admin clicks Update button
 7. Tasks are marked as closed and won't carry over
 
-### 6.5 Carryover Workflow (Automatic)
+### 8.6 Carryover Workflow (Automatic)
 
 1. Sprint ends with open tasks
 2. When viewing next sprint, system automatically includes:
@@ -980,7 +1205,7 @@ but you cannot edit past submissions.
    - All open tasks from previous sprints (TaskOrigin: Carryover)
 3. SprintsAssigned field tracks history (e.g., "10, 11, 12")
 
-### 6.6 Off Days Configuration Workflow
+### 8.7 Off Days Configuration Workflow
 
 1. Admin navigates to Admin Config > Off Days tab
 2. Admin selects sprint to configure
@@ -991,7 +1216,7 @@ but you cannot edit past submissions.
 5. Changes save automatically
 6. Off days appear highlighted in Worklog Activity reports
 
-### 6.7 Sprint Feedback Workflow
+### 8.8 Sprint Feedback Workflow
 
 1. Sprint N ends, Sprint N+1 begins
 2. Section Manager navigates to Sprint Feedback page
@@ -1003,11 +1228,29 @@ but you cannot edit past submissions.
 5. Section Manager submits feedback
 6. Feedback is stored (one submission per section per sprint)
 
+### 8.9 Worklog Import Workflow (Updated v1.1)
+
+1. Admin exports worklogs from iTrack (CSV format)
+2. Admin navigates to Upload Tasks page, Worklog section
+3. Admin uploads worklog CSV file
+4. System imports worklogs using **Date-Based Merge Strategy**:
+   - **For dates in upload**: All existing records for those dates are replaced
+   - **For dates NOT in upload**: Existing records are preserved
+5. System displays import statistics:
+   - Total Rows, Valid Logs, Dates in Upload
+   - Records Replaced, Records Preserved, Skipped
+6. Worklogs available in Worklog Activity page
+
+**Benefits of Date-Based Merge:**
+- Supports incremental updates (e.g., weekly exports)
+- Historical data preserved for dates outside upload range
+- Corrections handled naturally when re-uploading date ranges
+
 ---
 
-## 7. Configuration
+## 9. Configuration
 
-### 7.1 Sprint Schedule Configuration
+### 9.1 Sprint Schedule Configuration
 
 | Parameter | Default Value | Description |
 |-----------|---------------|-------------|
@@ -1016,7 +1259,7 @@ but you cannot edit past submissions.
 | end_weekday | 2 | End day (0=Monday, 2=Wednesday) |
 | cycle_name | "Thursday-to-Wednesday" | Display name for cycle |
 
-### 7.2 Capacity Configuration
+### 9.2 Capacity Configuration
 
 | Parameter | Default Value | Description |
 |-----------|---------------|-------------|
@@ -1024,14 +1267,14 @@ but you cannot edit past submissions.
 | warning_hours | 45 | Warning threshold |
 | capacity_percentage | 65 | Target utilization % |
 
-### 7.3 TAT Thresholds
+### 9.3 TAT Thresholds
 
 | Ticket Type | At-Risk Threshold | Exceeded Threshold |
 |-------------|-------------------|-------------------|
 | IR (Incident) | 0.6 days | 0.8 days |
 | SR (Service) | 18 days | 22 days |
 
-### 7.4 Capacity Limits by Goal Type
+### 9.4 Capacity Limits by Goal Type
 
 | Goal Type | Hours Limit | Percentage |
 |-----------|-------------|------------|
@@ -1041,26 +1284,26 @@ but you cannot edit past submissions.
 
 ---
 
-## 8. Table Display Conventions
+## 10. Table Display Conventions
 
-### 8.1 Row Styling
+### 10.1 Row Styling
 
 - **Multi-task tickets:** Alternating background colors for ticket groups
   - Even groups: Light green (#e8f4e8)
   - Odd groups: Light blue (#e8e8f4)
 
-### 8.2 Cell Styling
+### 10.2 Cell Styling
 
 - **Priority cells:** Color-coded by value
 - **DaysOpen cells:** Color-coded by TAT risk
 - **TaskOrigin cells:** Color-coded (New vs Carryover)
 
-### 8.3 Worklog Activity Highlighting
+### 10.3 Worklog Activity Highlighting
 
 - **Weekends:** Light purple background (#f8f5fc)
 - **Off Days:** Light red background (#ffe6e6)
 
-### 8.4 Capacity Table Styling
+### 10.4 Capacity Table Styling
 
 - **OK:** Green background (#d4edda)
 - **Warning:** Yellow background (#fff3cd)
@@ -1068,7 +1311,7 @@ but you cannot edit past submissions.
 
 ---
 
-## 9. Export Functionality
+## 11. Export Functionality
 
 All data tables support export with the following options:
 
@@ -1086,35 +1329,47 @@ Export files are named with context and timestamp:
 
 ---
 
-## 10. Validation Rules
+## 12. Validation Rules
 
-### 10.1 User Management
+### 12.1 User Management
 
 - Username must be unique
 - Cannot delete users (only deactivate)
 - Cannot deactivate last active Admin
 - Section Manager and Section User roles require at least one section assigned
 
-### 10.2 Sprint Calendar
+### 12.2 Sprint Calendar
 
 - Sprint numbers must be unique
 - End date must be after start date
 - Sprints cannot be deleted (historical data integrity)
 
-### 10.3 Task Status Updates
+### 12.3 Task Status Updates
 
 - Status update date cannot be before task assigned date
 - Only closed statuses can be selected for closing tasks
 
-### 10.4 Sprint Feedback
+### 12.4 Sprint Feedback
 
 - Only Section Managers can submit feedback
 - One submission per section per sprint
 - At least one comment required (what went well OR what did not go well)
 
+### 12.5 Task Import (v1.1)
+
+- TaskNum is the unique identifier for matching tasks
+- iTrack-owned fields are always updated from imports
+- Dashboard-owned fields are never overwritten by imports
+
+### 12.6 Sprint Assignment (v1.2)
+
+- Tasks can be assigned to multiple sprints
+- Removing from one sprint doesn't affect other sprint assignments
+- SprintsAssigned field maintains comma-separated history
+
 ---
 
-## 11. Navigation Structure
+## 13. Navigation Structure
 
 ```
 Home (app.py)
@@ -1137,20 +1392,26 @@ Home (app.py)
 
 ---
 
-## 12. Glossary
+## 14. Glossary
 
 | Term | Definition |
 |------|------------|
 | **Backlog** | Collection of all open tasks not yet completed |
 | **Carryover** | Task that wasn't completed in its original sprint and moves to the next sprint |
 | **Capacity** | Available working hours for a team member (default 52 hours/sprint) |
+| **Dashboard-owned field** | Field managed by the dashboard, never overwritten by iTrack imports (v1.1) |
+| **Field Ownership Model** | System defining which fields are updated during imports vs preserved (v1.1) |
 | **GoalType** | Classification of task importance: Mandatory (must complete) or Stretch (if time permits) |
 | **iTrack** | Source ticketing system from which task data is imported |
+| **iTrack-owned field** | Field sourced from iTrack, always updated during imports (v1.1) |
 | **Off Day** | Day when a team member is unavailable (vacation, sick leave, etc.) |
 | **Sprint** | Two-week work cycle (14 days) |
+| **SprintsAssigned** | Comma-separated list tracking all sprint assignments for a task (v1.2) |
 | **TAT** | Turn-Around Time - target completion timeframe for a ticket type |
 | **Ticket** | Parent work item that may contain multiple tasks |
+| **TicketStatus** | Status of the parent ticket from iTrack (v1.1) |
 | **Task** | Individual unit of work, child of a ticket |
+| **TaskNum** | Unique task identifier, used as primary key for import matching (v1.1) |
 | **Worklog** | Time tracking entry recording work performed |
 
 ---
@@ -1160,6 +1421,8 @@ Home (app.py)
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-01-05 | PBIDS Team | Initial document |
+| 1.1 | 2026-01-07 | PBIDS Team | Added Field Ownership Model, TicketStatus field, Comprehensive Import Report, TaskNum as primary key, Date-based merge for worklog imports |
+| 1.2 | 2026-01-13 | PBIDS Team | Added Editable Fields by Page section, Sprint Assignment/Removal logic documentation, SprintsAssigned field behavior, Centralized editable fields configuration, Work Backlogs editable fields, Sprint Planning sprint removal via blank SprintNumber |
 
 ---
 

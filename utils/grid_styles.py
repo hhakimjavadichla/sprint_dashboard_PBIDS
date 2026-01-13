@@ -467,7 +467,126 @@ COLUMN_WIDTHS = {
     'CompletedInSprint': calc_column_width('CompletedInSprint'),
     'SprintsAssigned': calc_column_width('SprintsAssigned'),
     'OriginalSprintNumber': calc_column_width('OriginalSprintNumber'),
+    
+    # Additional columns
+    'TicketStatus': calc_column_width('TicketStatus'),
 }
+
+
+# ===== SUBJECT CLEANING =====
+import re
+
+def clean_subject_prefix(subject) -> str:
+    """
+    Remove LAB-XX: NNNNNN - prefix from subject.
+    
+    Example: "LAB-SR: 1891370 - PIBIDS - Clean up" -> "PIBIDS - Clean up"
+    """
+    import pandas as pd
+    if pd.isna(subject):
+        return subject
+    return re.sub(r'^LAB-\w+:\s*\d+\s*-\s*', '', str(subject))
+
+
+def clean_subject_column(df, subject_col: str = 'Subject'):
+    """
+    Apply subject prefix cleaning to a DataFrame column.
+    
+    Args:
+        df: DataFrame to modify
+        subject_col: Name of the subject column
+    
+    Returns:
+        DataFrame with cleaned subject column
+    """
+    if subject_col in df.columns:
+        df[subject_col] = df[subject_col].apply(clean_subject_prefix)
+    return df
+
+
+# ===== STANDARDIZED COLUMN ORDER =====
+# This defines the consistent column order across Dashboard, Section View, Sprint Planning
+# Internal/hidden columns (_TicketGroup, _IsMultiTask) are prepended by each page
+STANDARD_COLUMN_ORDER = [
+    # Sprint info (for Sprint Planning, Sprint View)
+    'SprintNumber', 'SprintName', 'SprintStartDt', 'SprintEndDt', 'SprintsAssigned',
+    # Ticket/Task identifiers (TicketNum, TicketType, Subject grouped together)
+    'TicketNum', 'TicketType', 'Subject',
+    # Task info
+    'TaskNum', 'TaskCount', 'Section', 'CustomerName',
+    # Status and assignment
+    'Status', 'TicketStatus', 'AssignedTo',
+    # Dates
+    'TicketCreatedDt', 'TaskCreatedDt', 'DaysOpen',
+    # Planning fields
+    'CustomerPriority', 'FinalPriority', 'GoalType',
+    # Dependencies
+    'DependencyOn', 'DependenciesLead', 'DependencySecured',
+    # Notes and effort
+    'Comments', 'HoursEstimated', 'TaskHoursSpent', 'TicketHoursSpent',
+]
+
+# Work Backlogs column order - starts with SprintsAssigned, no sprint detail columns
+BACKLOG_COLUMN_ORDER = [
+    # Sprint assignment (key column for backlog)
+    'SprintsAssigned',
+    # Ticket/Task identifiers
+    'TicketNum', 'TicketType', 'Subject',
+    # Task info
+    'TaskNum', 'TaskCount', 'Section', 'CustomerName',
+    # Status and assignment
+    'Status', 'TicketStatus', 'AssignedTo',
+    # Dates
+    'TicketCreatedDt', 'TaskCreatedDt', 'DaysOpen',
+    # Planning fields
+    'CustomerPriority', 'FinalPriority', 'GoalType',
+    # Dependencies
+    'DependencyOn', 'DependenciesLead', 'DependencySecured',
+    # Notes and effort
+    'Comments', 'HoursEstimated', 'TaskHoursSpent', 'TicketHoursSpent',
+]
+
+
+def get_standard_column_order(assignee_col: str = 'AssignedTo') -> list:
+    """
+    Get the standard column order for task tables.
+    
+    Args:
+        assignee_col: The assignee column name to use (e.g., 'AssignedTo' or 'AssignedTo_Display')
+    
+    Returns:
+        List of column names in the standard order
+    """
+    # Replace 'AssignedTo' with the specified column name
+    return [assignee_col if col == 'AssignedTo' else col for col in STANDARD_COLUMN_ORDER]
+
+
+def get_display_column_order(assignee_col: str = 'AssignedTo') -> list:
+    """
+    Get the full display column order including hidden columns for row styling.
+    
+    Args:
+        assignee_col: The assignee column name to use
+    
+    Returns:
+        List of column names including hidden columns at the start
+    """
+    return ['_TicketGroup', '_IsMultiTask'] + get_standard_column_order(assignee_col)
+
+
+def get_backlog_column_order(assignee_col: str = 'AssignedTo') -> list:
+    """
+    Get the column order for Work Backlogs page.
+    Starts with SprintsAssigned, excludes sprint detail columns (SprintNumber, SprintName, etc.)
+    
+    Args:
+        assignee_col: The assignee column name to use
+    
+    Returns:
+        List of column names for backlog display
+    """
+    cols = [assignee_col if col == 'AssignedTo' else col for col in BACKLOG_COLUMN_ORDER]
+    return ['_TicketGroup', '_IsMultiTask'] + cols
 
 
 # Load column descriptions from config file
@@ -545,7 +664,7 @@ def display_column_help(columns: list = None, title: str = "📖 Column Descript
         # Group columns by category
         categories = {
             "Sprint Fields": ["SprintNumber", "SprintName", "SprintStartDt", "SprintEndDt", "SprintsAssigned"],
-            "Task Identifiers": ["TaskOrigin", "TicketNum", "TaskNum", "TaskCount", "UniqueTaskId"],
+            "Task Identifiers": ["TaskOrigin", "TicketNum", "TaskNum", "TaskCount"],
             "Task Info": ["TicketType", "Section", "CustomerName", "Status", "AssignedTo", "Subject"],
             "Dates": ["TicketCreatedDt", "TaskCreatedDt", "TaskAssignedDt", "StatusUpdateDt"],
             "Metrics": ["DaysOpen", "DaysCreated"],

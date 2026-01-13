@@ -9,9 +9,11 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 from st_aggrid.shared import JsCode
 from modules.task_store import get_task_store, CLOSED_STATUSES
 from modules.section_filter import filter_by_section, get_section_summary
+from modules.sprint_calendar import get_sprint_calendar
+from datetime import datetime
 from components.auth import require_auth, display_user_info, get_user_role, get_user_section, is_admin, is_pbids_user, can_edit_section
 from utils.exporters import export_to_csv, export_to_excel
-from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, display_column_help
+from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, display_column_help, get_backlog_column_order, clean_subject_column
 
 st.set_page_config(
     page_title="Section View (Prototype)",
@@ -103,7 +105,7 @@ if not sprint_df.empty and 'TicketType' in sprint_df.columns:
     # Ticket type labels
     type_labels = {
         'SR': 'SR (Service Request)',
-        'PR': 'PR (Problem)',
+        'PR': 'PR (Project Request)',
         'IR': 'IR (Incident Request)',
         'NC': 'NC (Non-classified IS Requests)',
         'AD': 'AD (Admin Request)'
@@ -146,6 +148,33 @@ if not sprint_df.empty and 'TicketType' in sprint_df.columns:
 # Use all tasks (AgGrid has built-in filtering)
 filtered_df = sprint_df.copy()
 
+# Add ticket grouping for row banding (color-coded by ticket)
+if 'TicketNum' in filtered_df.columns:
+    # Count tasks per ticket
+    ticket_counts_for_grouping = filtered_df.groupby('TicketNum').size().to_dict()
+    
+    # Sort by TicketNum to group tasks from same ticket together
+    filtered_df = filtered_df.sort_values(
+        by=['TicketNum', 'TaskNum'],
+        ascending=[True, True],
+        na_position='last'
+    ).reset_index(drop=True)
+    
+    # Track ticket groups for row banding
+    ticket_group_ids = []
+    current_group = 0
+    prev_ticket = None
+    
+    for idx, row in filtered_df.iterrows():
+        ticket = row['TicketNum']
+        if ticket != prev_ticket:
+            current_group += 1
+            prev_ticket = ticket
+        ticket_group_ids.append(current_group)
+    
+    filtered_df['_TicketGroup'] = ticket_group_ids
+    filtered_df['_IsMultiTask'] = filtered_df['TicketNum'].map(lambda x: ticket_counts_for_grouping.get(x, 1) > 1)
+
 st.caption(f"Showing {len(filtered_df)} tasks")
 
 # Task table - Priority is editable for open tasks
@@ -155,26 +184,29 @@ st.caption("💡 You can edit **Priority** for open tasks. Double-click the Prio
 # Column descriptions help
 display_column_help(title="❓ Column Descriptions")
 
+# Current Sprint info
+calendar = get_sprint_calendar()
+current_sprint = calendar.get_current_sprint()
+if current_sprint:
+    start_dt = pd.to_datetime(current_sprint['SprintStartDt'])
+    end_dt = pd.to_datetime(current_sprint['SprintEndDt'])
+    st.info(f"📅 **Current Sprint:** {current_sprint['SprintName']} (Sprint {current_sprint['SprintNumber']}) — {start_dt.strftime('%b %d')} to {end_dt.strftime('%b %d, %Y')}")
+
 if not filtered_df.empty:
     # Use display names if available
     sv_assignee_col = 'AssignedTo_Display' if 'AssignedTo_Display' in filtered_df.columns else 'AssignedTo'
     
-    # Priority dropdown values: 0=No longer needed, 1=Lowest to 5=Highest, NotAssigned
-    PRIORITY_VALUES = ['NotAssigned', 0, 1, 2, 3, 4, 5]
+    # Priority dropdown values: blank=not set yet, 0=No longer needed, 1=Lowest to 5=Highest
+    PRIORITY_VALUES = ['', 0, 1, 2, 3, 4, 5]
     
-    # All columns - same as Sprint Planning (only CustomerPriority is editable here)
-    full_column_order = [
-        'SprintNumber', 'SprintName', 'SprintStartDt', 'SprintEndDt', 'TaskOrigin', 'SprintsAssigned',
-        'TicketNum', 'TaskCount', 'TicketType', 'Section', 'CustomerName', 'TaskNum',
-        'Status', 'TicketStatus', sv_assignee_col, 'Subject', 'TicketCreatedDt', 'TaskCreatedDt',
-        'DaysOpen', 'CustomerPriority', 'FinalPriority', 'GoalType', 'DependencyOn',
-        'DependenciesLead', 'DependencySecured', 'Comments', 'HoursEstimated',
-        'TaskHoursSpent', 'TicketHoursSpent'
-    ]
-    display_order = ['UniqueTaskId', '_TicketGroup', '_IsMultiTask'] + full_column_order
+    # Use standardized column order from config (backlog order - no sprint detail columns)
+    display_order = get_backlog_column_order(sv_assignee_col)
     
     available_cols = [col for col in display_order if col in filtered_df.columns]
     display_df = filtered_df[available_cols].copy()
+    
+    # Clean subject column (remove LAB-XX: NNNNNN - prefix)
+    display_df = clean_subject_column(display_df)
     
     # Mark which rows are editable (open tasks only)
     display_df['_is_open'] = ~display_df['Status'].isin(CLOSED_STATUSES)
@@ -184,7 +216,6 @@ if not filtered_df.empty:
     gb.configure_default_column(resizable=True, filterable=True, sortable=True)
     
     # Hidden columns
-    gb.configure_column('UniqueTaskId', hide=True)
     gb.configure_column('_TicketGroup', hide=True)
     gb.configure_column('_IsMultiTask', hide=True)
     gb.configure_column('_is_open', hide=True)
@@ -223,13 +254,11 @@ if not filtered_df.empty:
         """)
         gb.configure_column('CustomerPriority', header_name='✏️ CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'], 
                             editable=priority_editable,
-                            cellStyle=PRIORITY_CELL_STYLE,
                             cellEditor='agSelectCellEditor',
                             cellEditorParams={'values': PRIORITY_VALUES})
     else:
         # Read-only for PBIDS Users
-        gb.configure_column('CustomerPriority', header_name='CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'], 
-                            cellStyle=PRIORITY_CELL_STYLE)
+        gb.configure_column('CustomerPriority', header_name='CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'])
     gb.configure_column('FinalPriority', header_name='FinalPriority', width=COLUMN_WIDTHS.get('FinalPriority', 100))
     gb.configure_column('GoalType', header_name='GoalType', width=COLUMN_WIDTHS.get('GoalType', 90))
     
@@ -265,7 +294,23 @@ if not filtered_df.empty:
     gb.configure_column('TicketHoursSpent', header_name='TicketHoursSpent', width=COLUMN_WIDTHS.get('TicketHoursSpent', 120))
     gb.configure_pagination(enabled=False)
     
+    # Row styling for multi-task ticket groups (alternating colors)
+    row_style_jscode = JsCode("""
+    function(params) {
+        if (params.data._IsMultiTask) {
+            if (params.data._TicketGroup % 2 === 0) {
+                return { 'backgroundColor': '#e8f4e8' };  // Light green for even groups
+            } else {
+                return { 'backgroundColor': '#e8e8f4' };  // Light blue for odd groups
+            }
+        }
+        return null;
+    }
+    """)
+    
     grid_options = gb.build()
+    grid_options['getRowStyle'] = row_style_jscode
+    grid_options['enableBrowserTooltips'] = False  # Disable browser tooltips to avoid double tooltip
     
     grid_response = AgGrid(
         display_df,
@@ -290,50 +335,26 @@ if not filtered_df.empty:
         
         with col_save:
             if st.button("💾 Save Changes", type="primary", use_container_width=True):
-                success_count = 0
-                fail_count = 0
+                editable_fields = ['CustomerPriority', 'DependencyOn', 'DependenciesLead', 'Comments']
                 
-                for idx, row in edited_df.iterrows():
-                    unique_id = row.get('UniqueTaskId')
-                    if pd.isna(unique_id):
-                        continue
-                    
-                    # Only save if task is open
-                    if not row.get('_is_open', True):
-                        continue
-                    
-                    try:
-                        mask = task_store.tasks_df['UniqueTaskId'] == unique_id
-                        if mask.any():
-                            # Save CustomerPriority
-                            priority_val = row.get('CustomerPriority')
-                            if pd.notna(priority_val):
-                                task_store.tasks_df.loc[mask, 'CustomerPriority'] = int(priority_val)
-                            
-                            # Save DependencyOn
-                            dep_val = row.get('DependencyOn')
-                            task_store.tasks_df.loc[mask, 'DependencyOn'] = dep_val if pd.notna(dep_val) else ''
-                            
-                            # Save DependenciesLead
-                            dep_lead_val = row.get('DependenciesLead')
-                            task_store.tasks_df.loc[mask, 'DependenciesLead'] = dep_lead_val if pd.notna(dep_lead_val) else ''
-                            
-                            # Save Comments
-                            comments_val = row.get('Comments')
-                            task_store.tasks_df.loc[mask, 'Comments'] = comments_val if pd.notna(comments_val) else ''
-                            
-                            success_count += 1
-                    except Exception as e:
-                        fail_count += 1
+                # Build updates list from edited grid data (only open tasks)
+                updates = []
+                for _, row in edited_df.iterrows():
+                    if pd.notna(row.get('TaskNum')) and row.get('_is_open', True):
+                        update = {'TaskNum': row['TaskNum']}
+                        for field in editable_fields:
+                            if field in row.index:
+                                update[field] = row[field]
+                        updates.append(update)
                 
-                if success_count > 0:
-                    if task_store.save():
-                        st.success(f"✅ Updated {success_count} task(s)")
-                        st.rerun()
-                    else:
-                        st.error("❌ Failed to save changes")
-                elif fail_count > 0:
-                    st.warning(f"⚠️ Failed to update {fail_count} task(s)")
+                # Use centralized update method
+                success, errors = task_store.update_tasks(updates)
+                
+                if success > 0:
+                    st.toast(f"✅ Updated {success} task(s)", icon="✅")
+                    st.rerun()
+                elif errors:
+                    st.error(f"❌ Errors: {', '.join(errors[:3])}")
                 else:
                     st.info("No changes to save")
         

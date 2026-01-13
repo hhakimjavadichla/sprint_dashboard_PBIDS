@@ -9,11 +9,13 @@ from datetime import datetime
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, JsCode
 from modules.task_store import get_task_store, VALID_STATUSES
 from modules.sprint_calendar import get_sprint_calendar
+from modules.section_filter import exclude_forever_tickets
 from modules.capacity_validator import validate_capacity, get_capacity_dataframe
 from components.auth import require_admin, display_user_info
-from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, TASK_ORIGIN_CELL_STYLE, COLUMN_WIDTHS, get_column_width, COLUMN_DESCRIPTIONS, display_column_help
+from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, TASK_ORIGIN_CELL_STYLE, COLUMN_WIDTHS, get_column_width, COLUMN_DESCRIPTIONS, display_column_help, get_display_column_order, clean_subject_column
 from utils.constants import VALID_SECTIONS
 from utils.exporters import export_to_excel
+from components.metrics_dashboard import display_ticket_task_metrics
 
 st.set_page_config(
     page_title="Sprint Planning",
@@ -161,6 +163,14 @@ with st.sidebar:
     
     # Show only unestimated
     show_unestimated = st.checkbox("Show only tasks without estimates", value=False)
+    
+    # Forever ticket filter
+    exclude_forever = st.checkbox(
+        "Exclude Forever Tickets",
+        value=False,
+        help="Hide Standing Meetings and Miscellaneous Meetings tasks",
+        key="exclude_forever_planning"
+    )
 
 # Apply filters
 filtered_tasks = sprint_tasks.copy()
@@ -177,70 +187,21 @@ if 'All' not in filter_status and filter_status:
 if show_unestimated:
     filtered_tasks = filtered_tasks[filtered_tasks['HoursEstimated'].isna()]
 
+# Apply forever ticket filter
+if exclude_forever:
+    filtered_tasks = exclude_forever_tickets(filtered_tasks)
+
 st.caption(f"Showing {len(filtered_tasks)} of {len(sprint_tasks)} tasks")
 
-# Summary metrics by ticket type (similar to Work Backlogs)
-if not sprint_tasks.empty and 'TicketType' in sprint_tasks.columns:
-    # Count tasks by type
-    task_counts = sprint_tasks['TicketType'].value_counts().to_dict()
-    
-    # Count unique tickets by type
-    ticket_counts = {}
-    if 'TicketNum' in sprint_tasks.columns:
-        for ticket_type in ['SR', 'PR', 'IR', 'NC', 'AD']:
-            ticket_counts[ticket_type] = sprint_tasks[sprint_tasks['TicketType'] == ticket_type]['TicketNum'].nunique()
-        total_tickets = sprint_tasks['TicketNum'].nunique()
-    else:
-        ticket_counts = task_counts.copy()
-        total_tickets = len(sprint_tasks)
-    
-    # Ticket type labels
-    type_labels = {
-        'SR': 'SR (Service Request)',
-        'PR': 'PR (Problem)',
-        'IR': 'IR (Incident Request)',
-        'NC': 'NC (Non-classified IS Requests)',
-        'AD': 'AD (Admin Request)'
-    }
-    
-    # Row 1: Tickets by category
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-    
-    with col1:
-        st.metric("Total Current Tickets", total_tickets)
-    with col2:
-        st.metric("SR", ticket_counts.get('SR', 0), help=type_labels['SR'])
-    with col3:
-        st.metric("PR", ticket_counts.get('PR', 0), help=type_labels['PR'])
-    with col4:
-        st.metric("IR", ticket_counts.get('IR', 0), help=type_labels['IR'])
-    with col5:
-        st.metric("NC", ticket_counts.get('NC', 0), help=type_labels['NC'])
-    with col6:
-        st.metric("AD", ticket_counts.get('AD', 0), help=type_labels['AD'])
-    
-    # Row 2: Tasks by category
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-    
-    with col1:
-        st.metric("Total Current Tasks", len(sprint_tasks))
-    with col2:
-        st.metric("SR", task_counts.get('SR', 0), help=type_labels['SR'])
-    with col3:
-        st.metric("PR", task_counts.get('PR', 0), help=type_labels['PR'])
-    with col4:
-        st.metric("IR", task_counts.get('IR', 0), help=type_labels['IR'])
-    with col5:
-        st.metric("NC", task_counts.get('NC', 0), help=type_labels['NC'])
-    with col6:
-        st.metric("AD", task_counts.get('AD', 0), help=type_labels['AD'])
+# Summary metrics by ticket type (reusable component)
+display_ticket_task_metrics(sprint_tasks)
 
 st.divider()
 
 # Prepare editable dataframe
 if not filtered_tasks.empty:
-    # Get all available sprint numbers for dropdown
-    all_sprint_numbers = sorted(all_sprints['SprintNumber'].unique().tolist())
+    # Get all available sprint numbers for dropdown (blank = remove from this sprint)
+    all_sprint_numbers = [''] + sorted(all_sprints['SprintNumber'].unique().tolist())
     
     # Use all filtered tasks (AgGrid has built-in filtering)
     display_tasks = filtered_tasks.copy()
@@ -256,8 +217,8 @@ if not filtered_tasks.empty:
     # Define Dependency dropdown values
     DEPENDENCY_VALUES = ['', 'Yes', 'No']
     
-    # Priority dropdown values: 0=No longer needed, 1=Lowest to 5=Highest, NotAssigned
-    PRIORITY_VALUES = ['NotAssigned', 0, 1, 2, 3, 4, 5]
+    # Priority dropdown values: blank=not set yet, 0=No longer needed, 1=Lowest to 5=Highest
+    PRIORITY_VALUES = ['', 0, 1, 2, 3, 4, 5]
     
     # Build edit dataframe with all required columns in specified order
     edit_df = display_tasks.copy()
@@ -269,7 +230,7 @@ if not filtered_tasks.empty:
         'DependencySecured', 'Comments', 'HoursEstimated', 'TicketType',
         'Section', 'CustomerName', 'TicketNum', 'TaskNum', 'Status',
         'AssignedTo', 'Subject', 'TicketCreatedDt', 'TaskCreatedDt',
-        'UniqueTaskId', 'TaskMinutesSpent'
+        'TaskMinutesSpent'
     ]
     
     for col in required_cols:
@@ -294,14 +255,8 @@ if not filtered_tasks.empty:
     if 'FinalPriority' not in edit_df.columns:
         edit_df['FinalPriority'] = None
     
-    # Calculate TaskOrigin: New (created in this sprint) vs Carryover (from previous sprint)
-    if 'OriginalSprintNumber' in edit_df.columns:
-        edit_df['TaskOrigin'] = edit_df.apply(
-            lambda row: 'New' if row.get('OriginalSprintNumber') == row.get('SprintNumber') else 'Carryover',
-            axis=1
-        )
-    else:
-        edit_df['TaskOrigin'] = 'New'
+    # TaskOrigin is always 'Assigned' since all sprint assignments are manual
+    edit_df['TaskOrigin'] = 'Assigned'
     
     # Calculate TaskCount for each ticket (e.g., "1/3", "2/3", "3/3")
     if 'TicketNum' in edit_df.columns and 'DaysOpen' in edit_df.columns:
@@ -350,27 +305,20 @@ if not filtered_tasks.empty:
     if 'GoalType' not in edit_df.columns:
         edit_df['GoalType'] = ''
     
-    # Select columns in the specified order (UniqueTaskId and hidden tracking columns always included)
-    # Columns aligned with Work Backlogs page (plus sprint-specific columns)
-    full_column_order = [
-        'SprintNumber', 'SprintName', 'SprintStartDt', 'SprintEndDt', 'TaskOrigin', 'SprintsAssigned',
-        'TicketNum', 'TaskCount', 'TicketType', 'Section', 'CustomerName', 'TaskNum',
-        'Status', 'TicketStatus', 'AssignedTo', 'Subject', 'TicketCreatedDt', 'TaskCreatedDt',
-        'DaysOpen', 'CustomerPriority', 'FinalPriority', 'GoalType', 'DependencyOn',
-        'DependenciesLead', 'DependencySecured', 'Comments', 'HoursEstimated',
-        'TaskHoursSpent', 'TicketHoursSpent'
-    ]
-    display_order = ['UniqueTaskId', '_TicketGroup', '_IsMultiTask'] + full_column_order
+    # Use standardized column order from config
+    display_order = get_display_column_order('AssignedTo')
     
     available_cols = [col for col in display_order if col in edit_df.columns]
     edit_df = edit_df[available_cols].copy()
+    
+    # Clean subject column (remove LAB-XX: NNNNNN - prefix)
+    edit_df = clean_subject_column(edit_df)
     
     # Configure editable AgGrid
     gb = GridOptionsBuilder.from_dataframe(edit_df)
     gb.configure_default_column(resizable=True, sortable=True, filterable=True)
     
     # Hidden columns for tracking
-    gb.configure_column('UniqueTaskId', hide=True)
     gb.configure_column('_TicketGroup', hide=True)
     gb.configure_column('_IsMultiTask', hide=True)
     
@@ -387,10 +335,9 @@ if not filtered_tasks.empty:
     gb.configure_column('SprintEndDt', header_name='SprintEndDt', width=COLUMN_WIDTHS['SprintEndDt'], editable=False,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('SprintEndDt', ''))
     
-    # Task Origin (New vs Carryover) - with color coding
+    # Task Origin (New vs Carryover)
     gb.configure_column('TaskOrigin', header_name='TaskOrigin', width=COLUMN_WIDTHS['TaskOrigin'], editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskOrigin', ''),
-                        cellStyle=TASK_ORIGIN_CELL_STYLE)
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskOrigin', ''))
     
     # Sprints Assigned (read-only in Sprint Planning)
     gb.configure_column('SprintsAssigned', header_name='Sprints Assigned', width=COLUMN_WIDTHS.get('SprintsAssigned', 130), editable=False,
@@ -428,12 +375,10 @@ if not filtered_tasks.empty:
                         type=['numericColumn'], )
     gb.configure_column('CustomerPriority', header_name='✏️ CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'], editable=True,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('CustomerPriority', ''),
-                        cellStyle=PRIORITY_CELL_STYLE,
                         cellEditor='agSelectCellEditor',
                         cellEditorParams={'values': PRIORITY_VALUES})
     gb.configure_column('FinalPriority', header_name='✏️ FinalPriority', width=COLUMN_WIDTHS['FinalPriority'], editable=True,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('FinalPriority', ''),
-                        cellStyle=PRIORITY_CELL_STYLE,
                         cellEditor='agSelectCellEditor',
                         cellEditorParams={'values': PRIORITY_VALUES})
     gb.configure_column('GoalType', header_name='✏️ GoalType', width=COLUMN_WIDTHS['GoalType'], editable=True,
@@ -486,6 +431,7 @@ if not filtered_tasks.empty:
     
     grid_options = gb.build()
     grid_options['getRowStyle'] = row_style_jscode
+    grid_options['enableBrowserTooltips'] = False  # Disable browser tooltips to avoid double tooltip
     
     st.caption("✏️ = Editable column (double-click to edit). Changes are saved when you click 'Save Changes' below.")
     
@@ -580,90 +526,70 @@ if not filtered_tasks.empty:
     
     with col1:
         if st.button("💾 Save Changes", type="primary", use_container_width=True):
-            success_count = 0
-            fail_count = 0
+            editable_fields = ['CustomerPriority', 'FinalPriority', 'HoursEstimated', 
+                             'GoalType', 'DependencyOn', 'DependenciesLead', 'DependencySecured', 'Comments']
             sprint_changes = 0
             
-            # Update each task in the store
-            for idx, row in edited_df.iterrows():
-                unique_id = row.get('UniqueTaskId')
-                if pd.isna(unique_id):
+            # Handle SprintNumber changes - modifies SprintsAssigned column
+            # Blank/empty = "remove from THIS sprint only" (task may stay in other sprints)
+            for _, row in edited_df.iterrows():
+                task_num = row.get('TaskNum')
+                if pd.isna(task_num):
                     continue
                 
-                # Prepare update data
-                updates = {}
-                
-                # SprintNumber change - moves task to different sprint
                 if 'SprintNumber' in row.index:
                     new_sprint_num = row['SprintNumber']
-                    if pd.notna(new_sprint_num):
-                        new_sprint_num = int(new_sprint_num)
-                        # Get sprint info for the new sprint
-                        new_sprint_info = calendar.get_sprint_by_number(new_sprint_num)
-                        if new_sprint_info:
-                            updates['SprintNumber'] = new_sprint_num
-                            updates['OriginalSprintNumber'] = new_sprint_num
-                            updates['SprintName'] = new_sprint_info.get('SprintName', f'Sprint {new_sprint_num}')
-                            updates['SprintStartDt'] = new_sprint_info.get('SprintStartDt')
-                            updates['SprintEndDt'] = new_sprint_info.get('SprintEndDt')
+                    new_sprint_str = str(new_sprint_num).strip() if pd.notna(new_sprint_num) else ''
+                    
+                    # Blank or 'nan' means remove from this sprint
+                    if new_sprint_str == '' or new_sprint_str.lower() == 'nan':
+                        success, msg = task_store.remove_task_from_sprint(str(task_num), selected_sprint_num)
+                        if success:
                             sprint_changes += 1
-                
-                # Numeric fields
-                for field in ['CustomerPriority', 'FinalPriority']:
-                    if field in row.index:
-                        val = row[field]
-                        if pd.notna(val) and val != '':
-                            updates[field] = int(val)
-                
-                for field in ['HoursEstimated']:
-                    if field in row.index:
-                        val = row[field]
-                        updates[field] = float(val) if pd.notna(val) and val != '' else None
-                
-                # Text fields (editable fields only)
-                text_fields = [
-                    'GoalType', 'DependencyOn', 'DependenciesLead', 'DependencySecured', 'Comments'
-                ]
-                for field in text_fields:
-                    if field in row.index:
-                        val = row[field]
-                        updates[field] = str(val) if pd.notna(val) and val != '' else None
-                
-                # Update in task store
-                try:
-                    # Find the task in the store
-                    mask = task_store.tasks_df['UniqueTaskId'] == unique_id
-                    if mask.any():
-                        for field, value in updates.items():
-                            task_store.tasks_df.loc[mask, field] = value
-                        success_count += 1
                     else:
-                        fail_count += 1
-                except Exception as e:
-                    st.error(f"Error updating task {unique_id}: {str(e)}")
-                    fail_count += 1
+                        # Check if moving to different sprint
+                        try:
+                            new_sprint_int = int(float(new_sprint_str))  # Handle '1.0' format
+                            if new_sprint_int != selected_sprint_num:
+                                task_store.remove_task_from_sprint(str(task_num), selected_sprint_num)
+                                task_store.assign_task_to_sprint(str(task_num), new_sprint_int)
+                                sprint_changes += 1
+                        except (ValueError, TypeError):
+                            pass  # Invalid value, skip
             
-            # Save the store
-            if success_count > 0:
-                if task_store.save():
-                    msg = f"✅ Successfully saved {success_count} task(s)"
-                    if sprint_changes > 0:
-                        msg += f" ({sprint_changes} moved to different sprints)"
-                    st.success(msg)
-                    
-                    # Recalculate capacity
-                    updated_sprint = task_store.get_sprint_tasks(selected_sprint_num)
-                    new_capacity = validate_capacity(updated_sprint)
-                    
-                    if new_capacity['overloaded']:
-                        st.warning(f"⚠️ Capacity Alert: {len(new_capacity['overloaded'])} people now overloaded")
-                    
-                    st.rerun()
-                else:
-                    st.error("❌ Failed to save changes to task store")
+            # Build updates list for editable fields
+            updates = []
+            for _, row in edited_df.iterrows():
+                if pd.notna(row.get('TaskNum')):
+                    update = {'TaskNum': row['TaskNum']}
+                    for field in editable_fields:
+                        if field in row.index:
+                            update[field] = row[field]
+                    updates.append(update)
             
-            if fail_count > 0:
-                st.warning(f"⚠️ Failed to update {fail_count} task(s)")
+            # Use centralized update method
+            success, errors = task_store.update_tasks(updates)
+            
+            # If only sprint changes were made (no editable field changes), save manually
+            if sprint_changes > 0 and success == 0:
+                task_store.save()
+            
+            if success > 0 or sprint_changes > 0:
+                msg = f"✅ Successfully saved {success} task(s)"
+                if sprint_changes > 0:
+                    msg += f" ({sprint_changes} sprint assignment(s) changed)"
+                st.success(msg)
+                
+                # Recalculate capacity
+                updated_sprint = task_store.get_sprint_tasks(selected_sprint_num)
+                new_capacity = validate_capacity(updated_sprint)
+                
+                if new_capacity['overloaded']:
+                    st.warning(f"⚠️ Capacity Alert: {len(new_capacity['overloaded'])} people now overloaded")
+                
+                st.rerun()
+            elif errors:
+                st.error(f"❌ Errors: {', '.join(errors[:3])}")
     
     with col2:
         st.caption("Changes are only saved when you click 'Save Changes'")

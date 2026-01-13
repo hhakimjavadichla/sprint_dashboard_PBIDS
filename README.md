@@ -1,6 +1,6 @@
 # PBIDS Sprint Dashboard
 
-**Version 1.0** — Developed by the PIBIDS Team
+**Version 1.2** — Developed by the PIBIDS Team
 
 A sprint management dashboard for workflow tracking. Imports task data from iTrack, manages sprint assignments through Work Backlogs, tracks capacity with Goal Type planning, and provides TAT-based priority monitoring.
 
@@ -36,7 +36,7 @@ A sprint management dashboard for workflow tracking. Imports task data from iTra
 - **Forever Ticket Exclusion** — Automatically excludes Standing Meetings and Miscellaneous Meetings
 - **Team Member Filtering** — Filter tasks to show only configured team members
 - **Color-Coded Tables** — Visual indicators for Status, Priority, Days Open, and Task Origin
-- **Standardized Ticket Types** — IR (Incident Request), SR (Service Request), PR (Problem), NC (Non-classified IS Requests), AD (Admin Request)
+- **Standardized Ticket Types** — IR (Incident Request), SR (Service Request), PR (Project Request), NC (Non-classified IS Requests), AD (Admin Request)
 - **Worklog Activity Reports** — Track team member daily activity with off day/weekend highlighting
 
 ## Quick Start
@@ -139,7 +139,8 @@ sprint_dashboard_PBIDS/
 │   ├── feedback.csv                # Sprint feedback
 │   └── offdays.csv                 # Off day configurations
 └── docs/                           # Documentation
-    └── PBIDS_Sprint_Dashboard_System_Requirements_v1.0_2026-01-05.md
+    ├── PBIDS_Sprint_Dashboard_System_Requirements_v1.1_2026-01-07.md
+    └── PBIDS_Sprint_Dashboard_System_Requirements_v1.2_2026-01-13.md
 ```
 
 ## Core Concepts
@@ -180,9 +181,15 @@ Sprint View (can be assigned to multiple sprints)
 1. **Export iTrack Data** — Download latest ticket data as CSV
 2. **Go to Upload Tasks page** — Upload the CSV file
 3. **Review Task Distribution** — Preview shows open vs completed tasks
-4. **Click Import** — Tasks are processed:
+4. **Click Import** — Tasks are processed using **Field Ownership Model**:
+   - 🔄 **Existing tasks** → Only iTrack fields updated (Status, TicketStatus, AssignedTo, dates)
+   - 🛡️ **Dashboard annotations preserved** → SprintsAssigned, Priority, GoalType, Comments
    - ✅ **Completed tasks** → Auto-assigned to their original sprint
    - 📋 **Open tasks** → Go to Work Backlogs (SprintsAssigned = empty)
+5. **Review Import Report** — Shows detailed statistics:
+   - New tasks breakdown by status
+   - Task status changes (old → new)
+   - Ticket status changes (old → new)
 
 ### 2. Assign Tasks from Work Backlogs
 
@@ -279,12 +286,21 @@ Optional columns:
 Key columns:
 - `SprintNumber`, `SprintName`, `SprintStartDt`, `SprintEndDt`
 - `TaskNum`, `TicketNum`, `TicketType`, `Section`
-- `Status`, `AssignedTo`, `CustomerName`, `Subject`
+- `Status`, `TicketStatus`, `AssignedTo`, `CustomerName`, `Subject`
 - `CustomerPriority`, `DaysOpen`
 - `TicketCreatedDt`, `TaskCreatedDt`
 - `HoursEstimated`
 - `DependencyOn`, `DependenciesLead`, `DependencySecured`
 - `Comments`
+
+### Field Ownership Model
+Defines which system owns each field during imports:
+
+| Ownership | Fields | Import Behavior |
+|-----------|--------|----------------|
+| **iTrack-owned** | TaskNum, TicketNum, Status, TicketStatus, AssignedTo, Subject, Section, CustomerName, dates | Always updated from iTrack |
+| **Dashboard-owned** | SprintsAssigned, CustomerPriority, FinalPriority, GoalType, HoursEstimated, Dependencies, Comments | Never overwritten by import |
+| **Computed** | OriginalSprintNumber, TicketType, DaysOpen | Calculated during import |
 
 ## Business Rules
 
@@ -391,7 +407,51 @@ Internal use only — PBIDS Team
 
 ## Version
 
-**v1.0** — January 5, 2026
+**v1.2** — January 13, 2026
+
+### What's New in v1.2
+
+#### Sprint Assignment & Removal Logic
+- **SprintsAssigned** column tracks all sprint assignments as comma-separated list (e.g., "1, 2")
+- **Assign tasks to sprints** from Work Backlogs page (adds sprint to list)
+- **Remove tasks from sprints** in Sprint Planning by setting SprintNumber to blank
+- **Remove only affects current sprint** — task stays in other assigned sprints
+- Example: Task in "1, 2" → Remove from Sprint 1 → Becomes "2"
+
+#### Editable Fields by Page
+| Page | Editable Fields |
+|------|----------------|
+| **Work Backlogs** | FinalPriority, GoalType, DependencyOn, DependenciesLead, DependencySecured, Comments |
+| **Section View** | CustomerPriority, DependencyOn, DependenciesLead, Comments |
+| **Sprint Planning** | All above + SprintNumber (blank = remove), HoursEstimated |
+
+#### Centralized Save Logic
+- All editable field updates use centralized `update_tasks()` method
+- Type-safe field conversion (int, float, string)
+- Consistent save behavior across all pages
+
+### What's New in v1.1
+
+#### Field Ownership Model
+- **TaskNum** as unique identifier for task matching
+- **iTrack-owned fields** always updated from imports (Status, TicketStatus, AssignedTo, etc.)
+- **Dashboard-owned fields** preserved during imports (SprintsAssigned, GoalType, Priority, Comments)
+- Prevents dashboard annotations from being overwritten
+
+#### TicketStatus Field
+- New **TicketStatus** column imported from iTrack
+- Displayed in all tables: Sprint View, Section View, Sprint Planning, Work Backlogs
+
+#### Comprehensive Import Report
+- **New tasks by status** — Breakdown of added tasks
+- **Task status changes** — Shows transitions (e.g., "Assigned → Completed")
+- **Ticket status changes** — Shows ticket-level transitions
+- **Field changes summary** — Count of updated fields
+
+#### Date-Based Merge for Worklogs
+- **For dates in upload** — All existing records replaced with new data
+- **For dates NOT in upload** — Existing records preserved
+- Supports incremental updates (e.g., weekly exports)
 
 ### What's New in v1.0
 

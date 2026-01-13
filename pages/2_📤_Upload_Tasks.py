@@ -1,6 +1,6 @@
 """
 Upload Tasks Page
-Simple task import from iTrack - tasks auto-assign to sprints by Task Assigned Date
+Task import from iTrack - sprints are assigned manually via Work Backlogs.
 Also supports worklog import for activity tracking.
 """
 import streamlit as st
@@ -30,26 +30,23 @@ task_store = get_task_store()
 calendar = get_sprint_calendar()
 
 # Instructions
-with st.expander("ℹ️ How It Works - Simplified Workflow", expanded=True):
+with st.expander("ℹ️ How It Works", expanded=True):
     st.markdown("""
-    ### **New Simplified Workflow:**
+    ### **Sprint Assignment Policy:**
     
-    1. **Upload iTrack CSV** - can contain tasks spanning multiple sprints
-    2. **Tasks auto-assign** to sprints based on **Task Assigned Date**
-    3. **Each task gets a Unique ID**: `TaskNum_S{SprintNumber}`
+    1. **Upload iTrack CSV** - imports all tasks from iTrack
+    2. **Sprints are assigned manually** via the **Work Backlogs** page
+    3. **No automatic sprint assignment** based on dates
     
-    ### **Current Sprint Automatically Includes:**
-    - Tasks assigned within the current sprint window
-    - **ALL open tasks from previous sprints** (carryover)
+    ### **What Happens on Upload:**
+    - New tasks are added to the backlog (no sprint assigned)
+    - Existing tasks preserve their sprint assignments
+    - iTrack fields are updated (Status, AssignedTo, dates, etc.)
+    - Dashboard annotations are preserved (Priority, GoalType, Comments, etc.)
     
-    ### **No Manual Sprint Generation Needed!**
-    
-    ---
-    
-    **To close a task and prevent carryover:**
-    - Go to **Sprint View** page
-    - Select the task and update its status
-    - Set the **Status Update Date** to control which sprint it closes in
+    ### **To Assign Tasks to Sprints:**
+    - Go to **Work Backlogs** page
+    - Select tasks and assign to target sprint
     """)
 
 st.divider()
@@ -77,57 +74,10 @@ if uploaded_file:
     # Map to sprint schema
     mapped_df = data_loader.map_itrack_to_sprint(itrack_df)
     
-    # Preview data distribution by sprint
-    st.subheader("📊 Step 2: Review Task Distribution")
+    # Preview task summary (no auto sprint assignment)
+    st.subheader("📊 Step 2: Review Task Summary")
     
-    st.markdown("Tasks will be automatically assigned to sprints based on **Task Assigned Date**:")
-    
-    if 'TaskAssignedDt' in mapped_df.columns:
-        mapped_df['TaskAssignedDt'] = pd.to_datetime(mapped_df['TaskAssignedDt'], errors='coerce')
-        
-        # Count by sprint
-        sprint_counts = {}
-        no_sprint_tasks = []
-        
-        for idx, row in mapped_df.iterrows():
-            sprint_info = calendar.get_sprint_for_date(row['TaskAssignedDt'])
-            if sprint_info:
-                sprint_num = sprint_info['SprintNumber']
-                key = f"Sprint {sprint_num}"
-                if key not in sprint_counts:
-                    sprint_counts[key] = {
-                        'count': 0,
-                        'name': sprint_info['SprintName'],
-                        'start': sprint_info['SprintStartDt'],
-                        'end': sprint_info['SprintEndDt']
-                    }
-                sprint_counts[key]['count'] += 1
-            else:
-                no_sprint_tasks.append(row['TaskNum'])
-        
-        # Display as table
-        if sprint_counts:
-            sprint_data = []
-            for sprint_key, info in sorted(sprint_counts.items(), key=lambda x: x[0]):
-                sprint_data.append({
-                    'Sprint': sprint_key,
-                    'Name': info['name'],
-                    'Window': f"{info['start'].strftime('%m/%d')} - {info['end'].strftime('%m/%d')}",
-                    'Tasks': info['count']
-                })
-            
-            st.dataframe(
-                pd.DataFrame(sprint_data),
-                use_container_width=True,
-                hide_index=True
-            )
-        
-        if no_sprint_tasks:
-            st.warning(f"⚠️ {len(no_sprint_tasks)} tasks have dates outside defined sprint windows")
-            with st.expander("View tasks without sprint"):
-                st.write(no_sprint_tasks[:20])
-                if len(no_sprint_tasks) > 20:
-                    st.caption(f"... and {len(no_sprint_tasks) - 20} more")
+    st.info("📋 **Note:** Tasks will be added to the backlog. Use **Work Backlogs** page to assign sprints.")
     
     # Status breakdown
     col1, col2 = st.columns(2)
@@ -144,8 +94,8 @@ if uploaded_file:
         open_count = len(mapped_df[~mapped_df['Status'].isin(CLOSED_STATUSES)]) if 'Status' in mapped_df.columns else len(mapped_df)
         closed_count = len(mapped_df) - open_count
         
-        st.metric("Open Tasks", open_count, help="Will carry over to current sprint")
-        st.metric("Closed Tasks", closed_count, help="Will stay in their original sprint")
+        st.metric("Open Tasks", open_count, help="Available for sprint assignment in Work Backlogs")
+        st.metric("Closed Tasks", closed_count, help="Completed tasks")
     
     st.divider()
     
@@ -159,8 +109,8 @@ if uploaded_file:
     **Import Rules (Field Ownership Model):**
     - 🔄 **Existing tasks** → Only iTrack fields updated (Status, AssignedTo, Subject, dates)
     - 🛡️ **Dashboard annotations preserved** → SprintsAssigned, Priority, GoalType, Comments, etc.
-    - ✅ **Completed tasks** → Auto-assigned to their original sprint
-    - 📋 **Open tasks** → Go to Work Backlogs for admin assignment
+    - 📋 **New tasks** → Added to backlog with no sprint assignment
+    - ✅ **Previously assigned tasks** → Keep their sprint assignments
     """)
     
     if st.button("📥 Import All Tasks", type="primary", use_container_width=True):
@@ -292,9 +242,15 @@ else:
                 st.metric("Open Tasks", open_count)
         
         with col3:
-            if 'OriginalSprintNumber' in all_tasks.columns:
-                sprint_count = all_tasks['OriginalSprintNumber'].nunique()
-                st.metric("Sprints", sprint_count)
+            if 'SprintsAssigned' in all_tasks.columns:
+                # Count unique sprints from SprintsAssigned column
+                all_sprints = set()
+                for sprints in all_tasks['SprintsAssigned'].dropna():
+                    if sprints and str(sprints).strip():
+                        for s in str(sprints).split(','):
+                            if s.strip():
+                                all_sprints.add(s.strip())
+                st.metric("Sprints", len(all_sprints))
         
         with col4:
             current_sprint = calendar.get_current_sprint()
@@ -315,6 +271,9 @@ st.header("📝 Upload Worklog Data")
 st.markdown("""
 Upload the iTrack **Worklog export** to track team member activity.
 This is a separate CSV file from the task export.
+
+**Import Strategy:** Date-based merge — records for dates in the upload are updated; 
+records for dates NOT in the upload are preserved.
 """)
 
 worklog_file = st.file_uploader(
@@ -333,12 +292,24 @@ if worklog_file:
     if success:
         st.success(f"✅ {message}")
         
+        # Row 1: Upload stats
         col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("Total Rows", stats['total'])
         with col2:
             st.metric("Valid Logs", stats['valid_logs'])
         with col3:
+            st.metric("Dates in Upload", stats.get('dates_in_upload', 0))
+        
+        # Row 2: Merge stats
+        col4, col5, col6 = st.columns(3)
+        with col4:
+            st.metric("Records Replaced", stats.get('records_replaced', 0), 
+                     help="Existing records for dates in upload that were replaced")
+        with col5:
+            st.metric("Records Preserved", stats.get('records_preserved', 0),
+                     help="Existing records for dates NOT in upload that were kept")
+        with col6:
             st.metric("Skipped", stats['skipped'])
         
         # Reset singleton to reload data

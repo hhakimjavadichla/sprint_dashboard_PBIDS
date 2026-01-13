@@ -406,10 +406,11 @@ with tab1:
                 export_df = sprint_worklogs.copy()
                 export_df['Hours'] = export_df['MinutesSpent'] / 60
                 excel_data = export_to_excel(export_df)
+                sprint_label = int(selected_sprint) if selected_sprint else "all"
                 st.download_button(
                     "📥 Export Excel",
                     excel_data,
-                    f"sprint_{int(selected_sprint)}_activity.xlsx",
+                    f"sprint_{sprint_label}_activity.xlsx",
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )

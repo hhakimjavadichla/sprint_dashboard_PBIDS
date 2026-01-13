@@ -101,19 +101,20 @@ with tab1:
             new_row = pd.DataFrame([{
                 'SprintNumber': new_sprint_num,
                 'SprintName': new_sprint_name,
-                'SprintStartDt': new_start_date.strftime('%m/%d/%y'),
-                'SprintEndDt': new_end_date.strftime('%m/%d/%y')
+                'SprintStartDt': new_start_date,
+                'SprintEndDt': new_end_date
             }])
             
             updated_sprints = pd.concat([all_sprints, new_row], ignore_index=True)
             updated_sprints = updated_sprints.sort_values('SprintNumber').reset_index(drop=True)
             
-            # Save to file
-            calendar_path = calendar.calendar_path
-            updated_sprints['SprintStartDt'] = pd.to_datetime(updated_sprints['SprintStartDt']).dt.strftime('%m/%d/%y')
-            updated_sprints['SprintEndDt'] = pd.to_datetime(updated_sprints['SprintEndDt']).dt.strftime('%m/%d/%y')
-            updated_sprints.to_csv(calendar_path, index=False)
+            # Convert ALL dates to consistent format before saving
+            updated_sprints['SprintStartDt'] = pd.to_datetime(updated_sprints['SprintStartDt']).dt.strftime('%Y-%m-%d')
+            updated_sprints['SprintEndDt'] = pd.to_datetime(updated_sprints['SprintEndDt']).dt.strftime('%Y-%m-%d')
+            updated_sprints.to_csv(calendar.calendar_path, index=False)
             
+            # Reload calendar to reflect changes
+            calendar.reload()
             st.success(f"✅ Sprint {new_sprint_num} added successfully!")
             st.rerun()
     
@@ -151,11 +152,17 @@ with tab1:
                         # Update sprint
                         mask = all_sprints['SprintNumber'] == sprint_to_edit
                         all_sprints.loc[mask, 'SprintName'] = edit_name
-                        all_sprints.loc[mask, 'SprintStartDt'] = edit_start.strftime('%m/%d/%y')
-                        all_sprints.loc[mask, 'SprintEndDt'] = edit_end.strftime('%m/%d/%y')
+                        all_sprints.loc[mask, 'SprintStartDt'] = edit_start
+                        all_sprints.loc[mask, 'SprintEndDt'] = edit_end
                         
-                        # Save
-                        all_sprints.to_csv(calendar.calendar_path, index=False)
+                        # Convert ALL dates to consistent format before saving
+                        save_df = all_sprints.copy()
+                        save_df['SprintStartDt'] = pd.to_datetime(save_df['SprintStartDt']).dt.strftime('%Y-%m-%d')
+                        save_df['SprintEndDt'] = pd.to_datetime(save_df['SprintEndDt']).dt.strftime('%Y-%m-%d')
+                        save_df.to_csv(calendar.calendar_path, index=False)
+                        
+                        # Reload calendar to reflect changes
+                        calendar.reload()
                         st.success(f"✅ Sprint {sprint_to_edit} updated!")
                         st.rerun()
             

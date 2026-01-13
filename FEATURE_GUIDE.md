@@ -83,11 +83,12 @@ admins = ["admin_username1", "admin_username2"]
 
 | Column | Type | Source | Description |
 |--------|------|--------|-------------|
-| TaskNum | String | iTrack | Unique task identifier (e.g., "IR-12345") |
+| TaskNum | String | iTrack | Unique task identifier (e.g., "IR-12345") - **Primary Key** |
 | TicketNum | Integer | iTrack | Parent ticket ID |
 | TicketType | String | Derived | Type: IR, SR, PR, NC (extracted from Subject prefix) |
 | Section | String | iTrack | Lab section/team |
 | Status | String | iTrack | Task status (Logged, Assigned, Accepted, Waiting, Completed, Closed) |
+| TicketStatus | String | iTrack | Ticket-level status from iTrack |
 | AssignedTo | String | iTrack | Team member username |
 | CustomerName | String | iTrack | Requester name |
 | Subject | String | iTrack | Task description |
@@ -146,11 +147,29 @@ admins = ["admin_username1", "admin_username2"]
 ## 4. Task Lifecycle
 
 ### 4.1 Task Import
-Tasks are imported from iTrack extract files (CSV format). When imported:
-- Each task receives a unique identifier based on its Task Number and the sprint it was created in
-- Tasks are automatically assigned an **Original Sprint Number** based on when the task was assigned (TaskAssignedDt)
+Tasks are imported from iTrack extract files (CSV format) using the **Field Ownership Model**:
+
+**Field Ownership:**
+| Ownership | Fields | Import Behavior |
+|-----------|--------|----------------|
+| **iTrack-owned** | TaskNum, TicketNum, Status, TicketStatus, AssignedTo, Subject, Section, CustomerName, dates | Always updated from iTrack |
+| **Dashboard-owned** | SprintsAssigned, CustomerPriority, FinalPriority, GoalType, HoursEstimated, Dependencies, Comments | Never overwritten by import |
+| **Computed** | OriginalSprintNumber, TicketType, DaysOpen | Calculated during import |
+
+**Import Behavior:**
+- **TaskNum** is used as the unique identifier to match existing tasks
+- **Existing tasks**: Only iTrack-owned fields are updated; dashboard annotations preserved
+- **New tasks**: Initialized with default values for dashboard fields
+- Tasks are automatically assigned an **Original Sprint Number** based on TaskAssignedDt
 - **Open tasks** go to the Work Backlogs (no sprint assignment)
 - **Completed/Closed tasks** are auto-assigned to their original sprint
+
+**Import Report:**
+After import, a detailed report shows:
+- New tasks breakdown by status
+- Task status changes (old → new transitions)
+- Ticket status changes (old → new transitions)
+- Field changes summary
 
 ### 4.2 Work Backlogs
 All open tasks appear in the Work Backlogs regardless of sprint assignment. This serves as a central pool where administrators can:
@@ -158,8 +177,29 @@ All open tasks appear in the Work Backlogs regardless of sprint assignment. This
 - Filter by days open, ticket age, section, status, and assignee
 - Select tasks for sprint assignment
 
-### 4.3 Sprint Assignment
-Administrators assign tasks from the Work Backlogs to **current or future sprints only** (past sprints are not available for assignment). A task can be assigned to **multiple sprints** (e.g., if work spans across sprints). The assignment is tracked as a comma-separated list of sprint numbers.
+### 4.3 Sprint Assignment (v1.2)
+Administrators assign tasks from the Work Backlogs to **current or future sprints only** (past sprints are not available for assignment). A task can be assigned to **multiple sprints** (e.g., if work spans across sprints). The assignment is tracked as a comma-separated list of sprint numbers in the `SprintsAssigned` field.
+
+**Assignment Process:**
+1. Select tasks using checkboxes in Work Backlogs
+2. Choose target sprint from dropdown
+3. Click "Assign to Sprint" button
+4. Sprint number is added to SprintsAssigned (e.g., "1" → "1, 2")
+
+### 4.3.1 Sprint Removal (v1.2)
+Administrators can remove tasks from sprints via the Sprint Planning page:
+
+1. Navigate to Sprint Planning for the target sprint
+2. Change the SprintNumber dropdown to **blank** (empty)
+3. Click "Save Changes"
+4. The current sprint is removed from SprintsAssigned
+
+**Important:** Removing from one sprint does NOT affect other sprint assignments.
+
+| Before | Action (in Sprint 1) | After |
+|--------|---------------------|-------|
+| SprintsAssigned: "1" | Set SprintNumber blank | SprintsAssigned: "" (backlog) |
+| SprintsAssigned: "1, 2" | Set SprintNumber blank | SprintsAssigned: "2" |
 
 ### 4.4 Sprint Planning
 The Sprint Planning page shows **only current and future sprints**. By default, a sprint has **no tasks** until the admin explicitly assigns them from Work Backlogs.
@@ -218,16 +258,24 @@ Used to import tasks and worklogs from iTrack.
 3. Preview imported data before confirming
 4. Tasks are added to the system with proper sprint assignments
 
-**Import behavior:**
-- New tasks are added to the Work Backlogs
-- Existing tasks are updated (Status, AssignedTo, Subject)
-- Dashboard-only fields (CustomerPriority, FinalPriority, Comments) are preserved
+**Import behavior (Field Ownership Model):**
+- **TaskNum** is the unique identifier for matching tasks
+- **Existing tasks**: Only iTrack-owned fields updated (Status, TicketStatus, AssignedTo, Subject, dates)
+- **Dashboard-owned fields preserved**: SprintsAssigned, CustomerPriority, FinalPriority, GoalType, HoursEstimated, Dependencies, Comments
+- **New tasks**: Added to Work Backlogs with default dashboard values
 - Worklogs are appended (duplicates detected by RecordId)
+
+**Import Report displays:**
+- New tasks by status (with open/closed indicators)
+- Task status changes (aggregated and individual)
+- Ticket status changes (aggregated and individual)
+- Field changes summary
 
 **Column Mapping** (iTrack → Dashboard):
 - `Task ID` → `TaskNum`
 - `Ticket ID` → `TicketNum`
 - `Task_Status` → `Status`
+- `Ticket_Status` → `TicketStatus`
 - `Task_Owner` → `AssignedTo`
 - `Ticket_Subject` → `Subject`
 - `Section` → `Section`
@@ -253,7 +301,7 @@ View tasks assigned to a specific sprint.
 
 **Displayed columns:**
 - Task #, Ticket #, Type, Section
-- Status, Assignee, Subject
+- Status, TicketStatus, Assignee, Subject
 - Hours Estimated, Days Open
 
 **Table Features:**
@@ -341,17 +389,24 @@ The primary workspace for planning sprint capacity.
 **Task Table (Editable AgGrid):**
 - View tasks assigned to current/selected sprint (empty by default until tasks are assigned)
 - **No tasks appear by default** - admin must assign tasks from Work Backlogs first
+- Columns include: Status, TicketStatus, AssignedTo, Subject, etc.
 - Edit directly in the table:
+  - **SprintNumber**: Dropdown (blank + all sprint numbers) - **blank = remove from this sprint (v1.2)**
   - **HoursEstimated**: Numeric input (hours)
   - **GoalType**: Dropdown (None, Mandatory, Stretch)
   - **Comments**: Multi-line text editor (popup on click)
   - **CustomerPriority**: Dropdown (0-5)
   - **FinalPriority**: Dropdown (0-5)
-  - **DependencyOn**: Text input
+  - **DependencyOn**: Dropdown (Yes, No, blank)
   - **DependenciesLead**: Text input
-  - **DependencySecured**: Dropdown (Yes, Pending, No, NA)
-- Changes auto-save when cell edit completes
+  - **DependencySecured**: Dropdown (Yes, Pending, No, blank)
+- Click "Save Changes" button to persist edits
 - **Expandable table** toggle for fullscreen editing
+
+**Sprint Removal (v1.2):**
+- Set SprintNumber to blank to remove task from current sprint
+- Only removes from THIS sprint - task stays in other assigned sprints
+- If task was only in this sprint, it returns to backlog
 
 **Capacity Summary Panel:**
 - Shows each team member with their allocated hours
@@ -371,7 +426,7 @@ The primary workspace for planning sprint capacity.
 **Columns displayed:**
 - SprintNumber, TaskOrigin, TicketNum, TaskCount
 - TicketType, Section, CustomerName, TaskNum
-- Status, AssignedTo, Subject
+- Status, TicketStatus, AssignedTo, Subject
 - TicketCreatedDt, TaskCreatedDt, DaysOpen
 - CustomerPriority, FinalPriority, GoalType
 - DependencyOn, DependenciesLead, DependencySecured
@@ -408,24 +463,34 @@ Metric cards showing open items by ticket type:
 - Select tasks using checkbox column in table
 - Choose target sprint from dropdown (**only current and future sprints**)
 - Click "Assign to Sprint" button
+- Sprint is added to SprintsAssigned column (e.g., "1" → "1, 2")
 - Tasks remain visible in backlogs but now have sprint assignment
 - Past sprints are not available for assignment
+
+**Editable Fields (v1.2):**
+- **FinalPriority**: Dropdown (0-5)
+- **GoalType**: Dropdown (Mandatory, Stretch, blank)
+- **DependencyOn**: Dropdown (Yes, No, blank)
+- **DependenciesLead**: Text popup editor
+- **DependencySecured**: Dropdown (Yes, Pending, No, blank)
+- **Comments**: Text popup editor
+- Click "Save Changes" button to persist edits
 
 **Table Features:**
 - AgGrid with sortable/filterable columns
 - Column header tooltips with descriptions
-- Pagination disabled (shows all rows)
+- Editable columns marked with ✏️ prefix
 - **Expandable table** toggle
 
 **Columns displayed:**
-- UniqueTaskId, SprintsAssigned, OriginalSprintNumber
+- SprintsAssigned (with checkbox for selection)
 - TicketNum, TaskCount, TicketType, Section
-- TaskNum, Status, AssignedTo, CustomerName
-- Subject, DaysOpen, DaysCreated
+- TaskNum, Status, TicketStatus, AssignedTo, CustomerName
+- Subject, DaysOpen
 - TicketCreatedDt, TaskCreatedDt
-- CustomerPriority, FinalPriority, GoalType
-- DependencyOn, DependenciesLead, DependencySecured
-- Comments, HoursEstimated
+- CustomerPriority, ✏️ FinalPriority, ✏️ GoalType
+- ✏️ DependencyOn, ✏️ DependenciesLead, ✏️ DependencySecured
+- ✏️ Comments, HoursEstimated
 
 ---
 
@@ -698,10 +763,14 @@ admins = ["admin_user1", "admin_user2"]
 ### 8.2 Worklog Import (Admin)
 1. Export worklogs from iTrack as CSV
 2. Go to **Upload Tasks** page
-3. Select "Worklog Import" option
-4. Upload the CSV file
-5. Confirm import
+3. Upload the worklog CSV file
+4. System uses **Date-Based Merge Strategy**:
+   - For dates in upload: All existing records replaced
+   - For dates NOT in upload: Existing records preserved
+5. Review import statistics (Total, Valid, Dates, Replaced, Preserved)
 6. View activity in **Worklog Activity** page
+
+**Benefits:** Supports incremental updates (e.g., weekly exports) while preserving historical data
 
 ### 8.3 Sprint Planning (Admin)
 1. Go to **Work Backlogs**
@@ -938,4 +1007,4 @@ Key Python packages (from `requirements.txt`):
 
 ---
 
-*Document last updated: December 2025*
+*Document last updated: January 2026*

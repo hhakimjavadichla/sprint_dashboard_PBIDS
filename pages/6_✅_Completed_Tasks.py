@@ -55,9 +55,7 @@ if completed_tasks.empty:
     st.write("Completed tasks will appear here as they are finished.")
     st.stop()
 
-# Calculate sprint history for each task
-# A task shows as "Active" in sprints from OriginalSprintNumber to (CompletedSprintNumber - 1)
-# and "Completed" in CompletedSprintNumber
+# Calculate which sprint a task was completed in
 def get_completed_sprint(row):
     """Determine which sprint a task was completed in based on SprintsAssigned"""
     sprints_assigned = str(row.get('SprintsAssigned', '')).strip()
@@ -68,8 +66,8 @@ def get_completed_sprint(row):
                 return max(sprint_list)  # Completed in the last assigned sprint
         except:
             pass
-    # Fallback to OriginalSprintNumber
-    return row.get('OriginalSprintNumber', current_sprint_num)
+    # No sprint assigned - return 0
+    return 0
 
 completed_tasks['CompletedInSprint'] = completed_tasks.apply(get_completed_sprint, axis=1)
 
@@ -223,6 +221,7 @@ with tab1:
     
     grid_options = gb.build()
     grid_options['getRowStyle'] = row_style_jscode
+    grid_options['enableBrowserTooltips'] = False  # Disable browser tooltips to avoid double tooltip
     
     AgGrid(
         grid_df,
@@ -370,6 +369,7 @@ with tab2:
             gb.configure_pagination(enabled=False)
             
             grid_options = gb.build()
+            grid_options['enableBrowserTooltips'] = False  # Disable browser tooltips to avoid double tooltip
             
             AgGrid(
                 display_df,
@@ -601,6 +601,7 @@ with tab4:
         gb.configure_pagination(enabled=False)
         
         grid_options = gb.build()
+        grid_options['enableBrowserTooltips'] = False  # Disable browser tooltips to avoid double tooltip
         
         AgGrid(
             display_df,
