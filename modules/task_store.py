@@ -2,6 +2,10 @@
 Task Store Module
 Single source of truth for all tasks across all sprints
 
+Data Source Modes:
+- CSV Mode: All data from local CSV (legacy, for backward compatibility)
+- Snowflake Mode: iTrack fields from Snowflake, dashboard fields from local CSV
+
 Sprint Assignment Policy:
 - NO automatic sprint assignment based on dates
 - All new tasks go to Work Backlogs with no sprint assigned
@@ -16,10 +20,16 @@ from typing import Optional, List, Dict, Tuple
 from modules.sprint_calendar import get_sprint_calendar
 from utils.name_mapper import apply_name_mapping, get_display_name
 from modules.section_filter import filter_by_team_members
+from utils.constants import IMPORT_THRESHOLD_DATE, OPEN_TASK_STATUSES, CLOSED_TASK_STATUSES
 
-# Path to all tasks store
+# Path to all tasks store (legacy CSV mode)
 ALL_TASKS_PATH = os.path.join(
     os.path.dirname(__file__), '..', 'data', 'all_tasks.csv'
+)
+
+# Path to dashboard annotations store (used in Snowflake mode)
+DASHBOARD_ANNOTATIONS_PATH = os.path.join(
+    os.path.dirname(__file__), '..', 'data', 'dashboard_annotations.csv'
 )
 
 # Statuses that indicate a task is closed (won't carry over)
@@ -122,6 +132,10 @@ class TaskStore:
     """
     Manages all tasks in a single store.
     
+    Data Source Modes:
+    - CSV Mode (legacy): All data from local CSV file
+    - Snowflake Mode: iTrack fields from Snowflake, dashboard fields from local CSV
+    
     Sprint Assignment Policy:
     - NO automatic sprint assignment based on dates
     - NO automatic carryover between sprints
@@ -129,13 +143,233 @@ class TaskStore:
     - SprintsAssigned: Comma-separated list of sprints task was assigned to (e.g., "4, 5")
     """
     
-    def __init__(self, store_path: str = None):
+    def __init__(self, store_path: str = None, use_snowflake: bool = None):
         self.store_path = store_path or ALL_TASKS_PATH
+        self.annotations_path = DASHBOARD_ANNOTATIONS_PATH
         self.calendar = get_sprint_calendar()
+        
+        # Determine data source mode
+        if use_snowflake is None:
+            # Auto-detect: use Snowflake if explicitly enabled in config
+            from modules.snowflake_connector import is_snowflake_enabled
+            self.use_snowflake = is_snowflake_enabled()
+        else:
+            self.use_snowflake = use_snowflake
+        
         self.tasks_df = self._load_store()
     
     def _load_store(self) -> pd.DataFrame:
-        """Load all tasks from store"""
+        """Load all tasks from store (CSV or Snowflake mode)"""
+        if self.use_snowflake:
+            return self._load_from_snowflake()
+        else:
+            return self._load_from_csv()
+    
+    def _load_from_snowflake(self) -> pd.DataFrame:
+        """Load tasks from Snowflake and merge with local dashboard annotations"""
+        from modules.snowflake_connector import fetch_tasks_from_snowflake, is_snowflake_configured
+        
+        if not is_snowflake_configured():
+            print("TaskStore: Snowflake not configured, falling back to CSV")
+            return self._load_from_csv()
+        
+        # Fetch iTrack data from Snowflake
+        snowflake_df, success, message = fetch_tasks_from_snowflake()
+        
+        if not success or snowflake_df.empty:
+            print(f"TaskStore: Failed to load from Snowflake: {message}")
+            # Fall back to CSV if Snowflake fails
+            return self._load_from_csv()
+        
+        # Normalize column names (Snowflake query already returns correct names)
+        snowflake_df = self._normalize_snowflake_columns(snowflake_df)
+        
+        # Extract TicketType from Subject (same logic as CSV import)
+        snowflake_df['TicketType'] = snowflake_df['Subject'].apply(self._extract_ticket_type)
+        
+        # Derive Section from AssignedTo (team member) or TaskOwnerTeam
+        if 'Section' not in snowflake_df.columns:
+            snowflake_df['Section'] = 'PIBIDS'  # Default section
+        
+        # Apply date-based filtering (same as import logic)
+        snowflake_df = self._apply_date_filter(snowflake_df)
+        
+        # Load dashboard annotations from local CSV
+        annotations_df = self._load_dashboard_annotations()
+        
+        # Merge Snowflake data with dashboard annotations
+        if not annotations_df.empty and 'TaskNum' in annotations_df.columns:
+            # Ensure TaskNum is string for merge
+            snowflake_df['TaskNum'] = snowflake_df['TaskNum'].astype(str)
+            annotations_df['TaskNum'] = annotations_df['TaskNum'].astype(str)
+            
+            # Only merge columns that exist in annotations
+            merge_cols = ['TaskNum'] + [c for c in DASHBOARD_OWNED_FIELDS if c in annotations_df.columns]
+            
+            # Merge on TaskNum, keeping all Snowflake records
+            df = snowflake_df.merge(
+                annotations_df[merge_cols],
+                on='TaskNum',
+                how='left'
+            )
+        else:
+            df = snowflake_df.copy()
+        
+        # Ensure dashboard fields exist with defaults
+        df = self._ensure_dashboard_fields(df)
+        
+        # Calculate DaysOpen
+        df = self._calculate_days_open(df)
+        
+        print(f"TaskStore: Loaded {len(df)} tasks from Snowflake")
+        return df
+    
+    def _extract_ticket_type(self, subject: str) -> str:
+        """Extract ticket type from subject line (same as CSV import)"""
+        if pd.isna(subject):
+            return "NC"
+        
+        subject_upper = str(subject).upper()
+        if 'LAB-IR' in subject_upper or '-IR:' in subject_upper:
+            return "IR"
+        elif 'LAB-SR' in subject_upper or '-SR:' in subject_upper:
+            return "SR"
+        elif 'LAB-PR' in subject_upper or '-PR:' in subject_upper:
+            return "PR"
+        elif 'LAB-AD' in subject_upper or '-AD:' in subject_upper:
+            return "AD"
+        elif 'LAB INCIDENT' in subject_upper:
+            return "IR"
+        
+        return "NC"
+    
+    def _normalize_snowflake_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Normalize Snowflake column names to match expected schema"""
+        # Snowflake returns uppercase columns, map to expected names
+        column_mapping = {
+            'TASKNUM': 'TaskNum',
+            'TICKETNUM': 'TicketNum',
+            'STATUS': 'Status',
+            'TICKETSTATUS': 'TicketStatus',
+            'ASSIGNEDTO': 'AssignedTo',
+            'SUBJECT': 'Subject',
+            'SECTION': 'Section',
+            'CUSTOMERNAME': 'CustomerName',
+            'TASKASSIGNEDDT': 'TaskAssignedDt',
+            'TASKCREATEDDT': 'TaskCreatedDt',
+            'TASKRESOLVEDDT': 'TaskResolvedDt',
+            'TICKETCREATEDDT': 'TicketCreatedDt',
+            'TICKETRESOLVEDDT': 'TicketResolvedDt',
+            'TICKETTOTALTIMESPENT': 'TicketTotalTimeSpent',
+            'TASKMINUTESSPENT': 'TaskMinutesSpent',
+            'TICKETTYPE': 'TicketType',
+        }
+        
+        # Rename columns that exist
+        rename_map = {k: v for k, v in column_mapping.items() if k in df.columns}
+        df = df.rename(columns=rename_map)
+        
+        # Parse date columns
+        date_cols = ['TaskAssignedDt', 'TaskCreatedDt', 'TaskResolvedDt', 
+                    'TicketCreatedDt', 'TicketResolvedDt']
+        for col in date_cols:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+        
+        return df
+    
+    def _apply_date_filter(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Apply date-based filtering to exclude old closed tasks"""
+        if df.empty or 'TaskCreatedDt' not in df.columns:
+            return df
+        
+        def should_keep(row):
+            task_created = row.get('TaskCreatedDt')
+            status = str(row.get('Status', '')).strip()
+            
+            if pd.isna(task_created):
+                return True
+            if task_created >= IMPORT_THRESHOLD_DATE:
+                return True
+            if status in OPEN_TASK_STATUSES:
+                return True
+            return False
+        
+        return df[df.apply(should_keep, axis=1)].copy()
+    
+    def _load_dashboard_annotations(self) -> pd.DataFrame:
+        """Load dashboard-owned field annotations from local CSV.
+        
+        Falls back to all_tasks.csv if annotations file doesn't exist (migration case).
+        """
+        # Try dedicated annotations file first
+        if os.path.exists(self.annotations_path):
+            try:
+                df = pd.read_csv(self.annotations_path, dtype={'SprintsAssigned': str, 'TaskNum': str})
+                for col in STRING_COLUMNS:
+                    if col in df.columns:
+                        df[col] = df[col].fillna('').astype(str).replace('nan', '')
+                return df
+            except Exception as e:
+                print(f"TaskStore: Error loading annotations: {e}")
+        
+        # Fall back to all_tasks.csv for migration (extract dashboard fields)
+        if os.path.exists(self.store_path):
+            try:
+                print("TaskStore: Migrating annotations from all_tasks.csv...")
+                full_df = pd.read_csv(self.store_path, dtype={'SprintsAssigned': str, 'TaskNum': str})
+                
+                # Extract only dashboard-owned fields + TaskNum
+                cols_to_keep = ['TaskNum'] + [c for c in DASHBOARD_OWNED_FIELDS if c in full_df.columns]
+                if len(cols_to_keep) > 1:  # Has at least TaskNum + one annotation field
+                    annotations_df = full_df[cols_to_keep].copy()
+                    
+                    # Clean string columns
+                    for col in STRING_COLUMNS:
+                        if col in annotations_df.columns:
+                            annotations_df[col] = annotations_df[col].fillna('').astype(str).replace('nan', '')
+                    
+                    # Save to annotations file for future use
+                    os.makedirs(os.path.dirname(self.annotations_path), exist_ok=True)
+                    annotations_df.to_csv(self.annotations_path, index=False)
+                    print(f"TaskStore: Migrated {len(annotations_df)} task annotations to {self.annotations_path}")
+                    
+                    return annotations_df
+            except Exception as e:
+                print(f"TaskStore: Error migrating annotations: {e}")
+        
+        return pd.DataFrame()
+    
+    def _ensure_dashboard_fields(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Ensure all dashboard-owned fields exist with defaults"""
+        if 'SprintsAssigned' not in df.columns:
+            df['SprintsAssigned'] = ''
+        if 'GoalType' not in df.columns:
+            df['GoalType'] = DEFAULT_GOAL_TYPE
+        if 'CustomerPriority' not in df.columns:
+            df['CustomerPriority'] = None
+        if 'FinalPriority' not in df.columns:
+            df['FinalPriority'] = None
+        if 'HoursEstimated' not in df.columns:
+            df['HoursEstimated'] = None
+        if 'DependencyOn' not in df.columns:
+            df['DependencyOn'] = ''
+        if 'DependenciesLead' not in df.columns:
+            df['DependenciesLead'] = ''
+        if 'DependencySecured' not in df.columns:
+            df['DependencySecured'] = ''
+        if 'Comments' not in df.columns:
+            df['Comments'] = ''
+        
+        # Convert string columns
+        for col in STRING_COLUMNS:
+            if col in df.columns:
+                df[col] = df[col].fillna('').astype(str).replace('nan', '')
+        
+        return df
+    
+    def _load_from_csv(self) -> pd.DataFrame:
+        """Load all tasks from CSV store (legacy mode)"""
         if not os.path.exists(self.store_path):
             return pd.DataFrame()
         
@@ -182,12 +416,17 @@ class TaskStore:
             return pd.DataFrame()
     
     def save(self) -> bool:
-        """Save task store to CSV"""
+        """Save task store (mode-dependent)"""
+        if self.use_snowflake:
+            return self._save_annotations()
+        else:
+            return self._save_csv()
+    
+    def _save_csv(self) -> bool:
+        """Save full task store to CSV (legacy mode)"""
         try:
-            # Ensure data directory exists
             os.makedirs(os.path.dirname(self.store_path), exist_ok=True)
             
-            # Ensure SprintsAssigned is saved as clean string (not float)
             if 'SprintsAssigned' in self.tasks_df.columns:
                 self.tasks_df['SprintsAssigned'] = self.tasks_df['SprintsAssigned'].fillna('').astype(str)
                 self.tasks_df['SprintsAssigned'] = self.tasks_df['SprintsAssigned'].replace('nan', '')
@@ -199,8 +438,33 @@ class TaskStore:
             print(f"Error saving task store: {e}")
             return False
     
+    def _save_annotations(self) -> bool:
+        """Save only dashboard annotations to local CSV (Snowflake mode)"""
+        try:
+            os.makedirs(os.path.dirname(self.annotations_path), exist_ok=True)
+            
+            # Extract only dashboard-owned fields + TaskNum as key
+            annotation_cols = ['TaskNum'] + [f for f in DASHBOARD_OWNED_FIELDS if f in self.tasks_df.columns]
+            annotations_df = self.tasks_df[annotation_cols].copy()
+            
+            # Clean string columns
+            if 'SprintsAssigned' in annotations_df.columns:
+                annotations_df['SprintsAssigned'] = annotations_df['SprintsAssigned'].fillna('').astype(str)
+                annotations_df['SprintsAssigned'] = annotations_df['SprintsAssigned'].replace('nan', '')
+            
+            annotations_df.to_csv(self.annotations_path, index=False)
+            print(f"TaskStore: Saved annotations for {len(annotations_df)} tasks to {self.annotations_path}")
+            return True
+        except Exception as e:
+            print(f"Error saving annotations: {e}")
+            return False
+    
     def reload(self) -> None:
-        """Reload task store from CSV file"""
+        """Reload task store from data source"""
+        if self.use_snowflake:
+            # Clear Snowflake cache to get fresh data
+            from modules.snowflake_connector import clear_snowflake_cache
+            clear_snowflake_cache()
         self.tasks_df = self._load_store()
     
     def update_tasks(self, updates: List[Dict]) -> Tuple[int, List[str]]:
@@ -317,6 +581,45 @@ class TaskStore:
             mapped_df['TaskAssignedDt'] = pd.to_datetime(
                 mapped_df['TaskAssignedDt'], errors='coerce'
             )
+        
+        # Ensure TaskCreatedDt is datetime for filtering
+        if 'TaskCreatedDt' in mapped_df.columns:
+            mapped_df['TaskCreatedDt'] = pd.to_datetime(
+                mapped_df['TaskCreatedDt'], errors='coerce'
+            )
+        
+        # =============================================================
+        # DATE-BASED IMPORT FILTER
+        # - Tasks created ON or AFTER threshold: import ALL statuses
+        # - Tasks created BEFORE threshold: only import OPEN statuses
+        # =============================================================
+        stats['skipped_old_closed'] = 0
+        
+        def should_import_task(row):
+            """Check if task should be imported based on date and status"""
+            task_created = row.get('TaskCreatedDt')
+            status = str(row.get('Status', '')).strip()
+            
+            # If no creation date, import the task (safe default)
+            if pd.isna(task_created):
+                return True
+            
+            # Tasks created on/after threshold: import everything
+            if task_created >= IMPORT_THRESHOLD_DATE:
+                return True
+            
+            # Tasks created before threshold: only import if status is open
+            if status in OPEN_TASK_STATUSES:
+                return True
+            
+            # Exclude closed/cancelled tasks created before threshold
+            return False
+        
+        # Apply filter and track skipped count
+        original_count = len(mapped_df)
+        import_mask = mapped_df.apply(should_import_task, axis=1)
+        stats['skipped_old_closed'] = original_count - import_mask.sum()
+        mapped_df = mapped_df[import_mask].copy()
         
         # Get existing TaskNums for quick lookup
         existing_task_nums = set()
@@ -848,6 +1151,68 @@ class TaskStore:
             })
         
         return pd.DataFrame(summary_data)
+    
+    def cleanup_old_closed_tasks(self) -> Dict:
+        """
+        Retroactively remove closed/cancelled tasks created before the threshold date.
+        
+        This applies the same logic as import filtering to the existing store:
+        - Tasks created ON or AFTER threshold: keep all statuses
+        - Tasks created BEFORE threshold: only keep OPEN statuses
+        
+        Returns:
+            Dict with cleanup statistics
+        """
+        stats = {
+            'total_before': len(self.tasks_df),
+            'removed': 0,
+            'kept': 0,
+            'removed_by_status': {}
+        }
+        
+        if self.tasks_df.empty:
+            return stats
+        
+        # Ensure TaskCreatedDt is datetime
+        if 'TaskCreatedDt' in self.tasks_df.columns:
+            self.tasks_df['TaskCreatedDt'] = pd.to_datetime(
+                self.tasks_df['TaskCreatedDt'], errors='coerce'
+            )
+        
+        def should_keep_task(row):
+            """Check if task should be kept based on date and status"""
+            task_created = row.get('TaskCreatedDt')
+            status = str(row.get('Status', '')).strip()
+            
+            # If no creation date, keep the task (safe default)
+            if pd.isna(task_created):
+                return True
+            
+            # Tasks created on/after threshold: keep everything
+            if task_created >= IMPORT_THRESHOLD_DATE:
+                return True
+            
+            # Tasks created before threshold: only keep if status is open
+            if status in OPEN_TASK_STATUSES:
+                return True
+            
+            # Remove closed/cancelled tasks created before threshold
+            return False
+        
+        # Track what we're removing
+        for idx, row in self.tasks_df.iterrows():
+            if not should_keep_task(row):
+                status = str(row.get('Status', 'Unknown'))
+                stats['removed_by_status'][status] = stats['removed_by_status'].get(status, 0) + 1
+        
+        # Apply filter
+        keep_mask = self.tasks_df.apply(should_keep_task, axis=1)
+        stats['removed'] = (~keep_mask).sum()
+        stats['kept'] = keep_mask.sum()
+        
+        self.tasks_df = self.tasks_df[keep_mask].copy()
+        
+        return stats
 
 
 # Singleton instance
@@ -859,3 +1224,9 @@ def get_task_store() -> TaskStore:
     if _store_instance is None:
         _store_instance = TaskStore()
     return _store_instance
+
+
+def reset_task_store() -> None:
+    """Reset the task store singleton to force reload from data source"""
+    global _store_instance
+    _store_instance = None

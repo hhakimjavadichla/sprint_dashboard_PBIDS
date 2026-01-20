@@ -81,6 +81,10 @@ def get_at_risk_tasks(df: pd.DataFrame, threshold: float = None) -> pd.DataFrame
     
     if df.empty:
         return pd.DataFrame()
+    
+    # Defensive check for required columns
+    if 'TicketType' not in df.columns or 'DaysOpen' not in df.columns:
+        return pd.DataFrame()
 
     df = exclude_forever_tickets(df)
     
@@ -142,6 +146,10 @@ def calculate_tat_metrics(df: pd.DataFrame) -> dict:
     }
     
     if df.empty:
+        return metrics
+    
+    # Check for required columns
+    if 'TicketType' not in df.columns or 'DaysOpen' not in df.columns:
         return metrics
     
     # Count by type

@@ -15,12 +15,6 @@ from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STY
 from utils.exporters import export_to_excel
 from components.metrics_dashboard import display_ticket_task_metrics
 
-st.set_page_config(
-    page_title="Work Backlogs & Sprint Assignment",
-    page_icon="📋",
-    layout="wide"
-)
-
 # Apply custom styles
 apply_grid_styles()
 
@@ -31,7 +25,7 @@ if not require_admin():
 # Display user info
 display_user_info()
 
-st.title("📋 Work Backlogs & Sprint Assignment")
+st.title("📋 Backlog Assign")
 
 # Get task store and sprint calendar
 task_store = get_task_store()

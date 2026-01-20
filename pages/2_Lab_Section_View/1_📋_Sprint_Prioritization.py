@@ -15,16 +15,10 @@ from components.auth import require_auth, display_user_info, get_user_role, get_
 from utils.exporters import export_to_csv, export_to_excel
 from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, display_column_help, get_backlog_column_order, clean_subject_column
 
-st.set_page_config(
-    page_title="Section View (Prototype)",
-    page_icon="🧪",
-    layout="wide"
-)
-
 # Apply custom tooltip styles
 apply_grid_styles()
 
-st.title("Section View")
+st.title("📋 Sprint Prioritization")
 st.caption("_Prototype — PBIDS Team_")
 
 # Require authentication

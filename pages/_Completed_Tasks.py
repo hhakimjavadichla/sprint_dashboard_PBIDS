@@ -13,12 +13,6 @@ from components.auth import require_admin, display_user_info
 from utils.exporters import export_to_excel, export_to_csv
 from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS
 
-st.set_page_config(
-    page_title="Completed Tasks",
-    page_icon="✅",
-    layout="wide"
-)
-
 # Apply custom tooltip styles
 apply_grid_styles()
 

@@ -26,6 +26,9 @@ reportlab==4.0.7
 # Authentication
 streamlit-authenticator==0.2.3
 
+# Database Connectors
+snowflake-connector-python>=3.6.0
+
 # Utilities
 pytz==2023.3
 tomli==2.0.1  # TOML parser for Python < 3.11

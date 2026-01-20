@@ -1,0 +1,273 @@
+﻿ACTUALCATEGORY,ACTUALCATEGORY_VALID,CATEGORY,CATEGORY_VALID,CAUSECODE,CAUSECODE_VALID,CLOSEDBY,CLOSEDDATETIME,CLOSEDDURATION,CREATEDBY,CREATEDDATETIME,EMAIL,FIRSTCALLRESOLUTION,IMPACT,IMPACT_VALID,INCIDENTNUMBER,ISNOTIFICATION,ISVIP,ISWORKAROUND,LASTMODBY,LASTMODDATETIME,PHONE,PRIORITY,PRIORITY_VALID,PROFILEFULLNAME,PROFILELINK_RECID,PROFILELINK_CATEGORY,RECID,RESOLUTION,SERVICE,SERVICE_VALID,SLA,SLA_VALID,SLALINK_RECID,SLALINK_CATEGORY,SOURCE,SOURCE_VALID,STATUS,STATUS_VALID,SUBJECT,SYMPTOM,URGENCY,URGENCY_VALID,LOGINID,BUSINESSUNITID,OWNER,OWNER_VALID,OWNERTEAM,OWNERTEAM_VALID,OWNERTYPE,ALTERNATECONTACTLINK_RECID,ALTERNATECONTACTLINK_CATEGORY,RESOLVEDDATETIME,RESOLVEDBY,HOURSOFOPERATION,HOURSOFOPERATION_VALID,OWNEREMAIL,OWNERTEAMEMAIL,CUSTOMERLOCATION,ISREPORTEDBYALTERNATECONTACT,RESOLUTIONESCLINK_RECID,RESOLUTIONESCLINK_CATEGORY,RESPONSEESCLINK_RECID,RESPONSEESCLINK_CATEGORY,WAITINGESCLINK_RECID,WAITINGESCLINK_CATEGORY,CLOSINGESCLINK_RECID,CLOSINGESCLINK_CATEGORY,ALTERNATECONTACTEMAIL,ORGANIZATIONUNITID,REPORTINGORGUNITID,TYPEOFINCIDENT,ALTERNATECONTACTPHONE,TEAMMANAGEREMAIL,PROBLEMLINK_CATEGORY,PROBLEMLINK_RECID,CUSTOMERDEPARTMENT,ACTUALSERVICE_VALID,ACTUALSERVICE,COSTPERMINUTE,GRIDROWCOLOR,ISINFINALSTATE,ISRECLASSIFIEDFORRESOLUTION,ISRESOLUTIONBREACHED,ISRESPONSEBREACHED,KNOWLEDGELINK_CATEGORY,KNOWLEDGELINK_RECID,PREVIOUSSTATE,RESOLVEDBYINCIDENTNUMBER,TYPEOFINCIDENT_VALID,TOTALTIMESPENT,RESPONDEDBY,RESPONDEDDATETIME,ORGUNITLINK_CATEGORY,ORGUNITLINK_RECID,REPORTINGORGUNITID_VALID,OWNINGORGUNITID_VALID,OWNINGORGUNITID,PROGRESSBARPOSITION,RESOLVEDBYTYPE,ICON,REPORTEDBY,CREATEDBYTYPE,SLADISPLAYTEXT,SERVICEREQLINK_RECID,SERVICEREQLINK_CATEGORY,READONLY,COST,INCIDENTDETAILSUMMARY,INCIDENTDETAILWORKFLOWTAG,APPROVER,ISAPPROVALNEEDED,ISDSMTASKEXISTED,APPROVALSTATUS,SOCIALTEXTHEADER,SUBCATEGORY,CUSTOMERLOCATION_VALID,RESOLVEDBYKM,INCOMINGEMAIL,CERNERNUMBER,TASKEXIST,ACTUALSUBCATEGORY,ACTUALSUBCATEGORY_VALID,WAITINGREASON,CERNERUPDATERESULTS,ROOM,CERNERSTATUS,SUGGESTEDTEAM,CALLTYPE,PORTFOLIO,PORTFOLIO_VALID,C_PROJECT_TEAM,C_PROTECTED_HEALTH_INFORMATION,C_ISSUEIMPACT_TEXT,C_SEVERITY,C_ENVIRONMENT,C_SOLUTION,C_SOLUTION_FAMILY,C_CONTACT_LOGIN_ID,C_PHIFLAG,C_REPORTING_USER,C_OWNER_EMAIL,C_OWNER_PHONE,C_OWNER,C_PRIORITY,C_ENTITLEMENT,C_CONVERSION_STATUS,C_REPORTING_USER_CONTACT_INFO,C_SERVICE_RECORD_NUMBER,SENDTOCERNER,SENDSURVEYNOTIFICATION,REMOTE,INCIDENTNETWORKUSERNAME,PROJECT,PROJECT_VALID,AGE,KCSENVIRONMENT,CAUSE,LOCDEPARTMENT_RECID,LOCDEPARTMENT_CATEGORY,DEPARTMENT_RECID,DEPARTMENT_CATEGORY,EVENTCIRECID,SURVEYNEXTSENTON,SURVEYCANSEND,REASONFORSR,MANAGER,MANAGER_VALID,L_CUSTOMERLOCATION,L_PHONE,L_EXT,L_FAX,L_SUBJECT,L_SYMPTOM,L_TYPEOFCATEGORY,L_TYPEOFSERVICE,L_TYPEOFSUBCATEGORY,L_TYPEOFSERVICE_VALID,L_TYPEOFCATEGORY_VALID,L_TYPEOFSUBCATEGORY_VALID,L_SOURCE,L_SOURCE_VALID,LOSTSTOLENTEMPLATE,SDA_NEWDEPLOYMENT,SDA_APPROVEDBYIS,REPORTINGCUSTOMERINFO,PHONE2,CALLTYPELINK_CATEGORY,CALLTYPELINK_RECID,ESCALATIONFORMEMAILS,ESCALATIONFORMLINKED,ESCALATIONINFO,SELFSERVICE_OTHERUSER,DESCRIPTION_LABSELFSERVICE,SELFSERVICERECID,SERVICEREQLINKID,PWRESETAPP_VALID,PWRESETAPP,CERNERNUMBERTEXT,ALLSCRIPTS,ISUNREAD,RESEARCHINCIDENT,ENTITYLINK_CATEGORY,ENTITYLINK_RECID,IVNT_REQUESTFORINFORMATIONORDATA,IVNT_UPDATERFI,ADDCHATCONVERSATIONTOACTIVITYHISTORY,SUBCATEGORY_VALID,CALLTYPE_VALID,IVNT_TEAMSUSERDETAILSLINK_CATEGORY,IVNT_TEAMSUSERDETAILSLINK_RECID,INCYN_VALID,INCYN,HEALTHEINTENTREQTYPE,HEALTHEINTENTREQTYPE_VALID,VIRIMAASSETID,RECOMMENDEDCATEGORY,RECOMMENDEDSERVICE,RECOMMENDEDSUBCATEGORY,ACCURACY,ISRECOMMENDED,RECOMSERVICE,RECOMCATEGORY,RECOMSUBCATEGORY,SECTION,SECTION_VALID,KCSENV2_VALID,KCSENV2,C_RESOLUTION,ISRUNTICKETCLASSIFICATION,NRN_ISCLUSTERPARENT,NRN_CLUSTERINCIDENTLINK_CATEGORY,NRN_CLUSTERINCIDENTLINK_RECID,NRN_CORRELATEDINCIDENTLINK_CATEGORY,NRN_CORRELATEDINCIDENTLINK_RECID,NRN_AISUMMARY,EXCLUDEFROMARCHIVAL
+Integrated Apps - Clinical,DDA313D231F2476BB6DFBDCABD909E62,Integrated Apps - Clinical,DDA313D231F2476BB6DFBDCABD909E62,Auto Resolve,05D59023D76943C3B77A56F223F01762,InternalServices,2021-09-06T00:08:54.000,217838,peyu,2021-08-27T00:29:22.000,sdeshmukhrane@chla.usc.edu,,Medium,1AFFC174C7EA4AB79CCA6B15EB67006D,1583928,true,false,false,InternalServices,2021-09-06T00:08:54.000,,3,29CD5D78E16F4D82916C3E933A600096,"Deshmukh-Rane, Suvarna",2C3E2C3532F04A448EA7ED57F8749CA9,Employee,01C3F713F7DF41FE805563D4C1EC0A98,woodlist and admin account created on MAC (Automatically Closed),Software Support,08B4E71DCC3D4C43B311CDA1CBCF24DD,,,,,Phone,EF789CE160E742F99623DBB4D29C045C,Closed,2905321A3B12477A82E94E289F47786B,MAC assistance needed,"1) Labshare mapping
+2) installation of software
+please work with peter yu to arrange.   (AutoClosed)",Medium,44021B6CC6E44E598868C4B3306053AE,sdeshmukhrane,,peyu,B716175E8AF049F98F4FD2ADB4B1D0AB,LAB PATH INFORMATICS,E7D793597F4A4DC3A2F6E089D36227F7,Employee,,,2021-09-01T00:10:05.000,peyu,Weekly HOP,,peyu@chla.usc.edu,listeam@chla.usc.edu,Duque 2,false,505cf18a069311ec813e068b1c35975b,Frs_data_escalation_watch,505cf188069311ec813e068b1c35975b,Frs_data_escalation_watch,505cf187069311ec813e068b1c35975b,Frs_data_escalation_watch,505cf189069311ec813e068b1c35975b,Frs_data_escalation_watch,,Default,,Failure,,peyu@chla.usc.edu,,,,08B4E71DCC3D4C43B311CDA1CBCF24DD,Software Support,,,,false,false,false,,,,,,90,,,OrganizationalUnit,978ABB09369944C1991468FC458F488E,,,,5,Agent,,,Web Client,,,,,0,,,,,false,,Incident 1583928: ,,BDA4662239184FE0983C6DD76324FE9C,,,0,false,,,,,,,,,Clinical Systems Analysis and Consulting Services,2183424CD367437B9D042B7365A5062C,,,,,,,,,,,,,,,,,,,,true,,sdeshmukhrane,,,4,,,,,,,,,true,,,,,,,,,,,,,,,,,,"Date/Time of loss:
+
+Location of loss:
+
+Item: 
+(Latop, MAC, iPad, iPhone, Android, Flash Drive, External Hard Drive, Tablet)
+
+Asset tag: (if known)
+
+***Serial Number (if found by SD in Airwatch):
+
+***Call-back number (not lost device #):
+
+Was there any PHI documentation with device:
+
+Police Report filed:
+
+Was system encrypted:
+
+Was AirWatch deactivation deployed:",,,Email:sdeshmukhrane@chla.usc.edu; Phone:,,,,,,,,,,,,,,true,,,,,false,Chat Incident(s),,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+Connectivity,5DFB1B88F1CE425A9B74F0913C8802D8,Connectivity,5DFB1B88F1CE425A9B74F0913C8802D8,Configuration Error,A5A3FACC440C4DFBB5C7F2CE2A9EB44E,InternalServices,2025-01-23T01:40:22.000,188576,iibarraflores,2025-01-15T03:17:26.000,iibarraflores@chla.usc.edu,,Medium,1AFFC174C7EA4AB79CCA6B15EB67006D,1831599,true,false,false,InternalServices,2025-01-23T01:40:22.000,323/361-4816,3,29CD5D78E16F4D82916C3E933A600096,"Ibarra Flores, Irvin",FBC0866204BB4A48BE5C4061F01E3117,Employee,7F6E662EAFED4795BE88197F4D8C0BA7,Confirmed I have access to VM. (Automatically Closed),Hardware Support,2A87D976F26B44A9A0304F6C34327FE9,,,,,Phone,EF789CE160E742F99623DBB4D29C045C,Closed,2905321A3B12477A82E94E289F47786B,Grant access to 10.241.1.80,Please grant me access to the following VM with the following IP: 10.241.1.80 (AutoClosed),Medium,44021B6CC6E44E598868C4B3306053AE,iibarraflores,,iibarraflores,FBC0866204BB4A48BE5C4061F01E3117,LAB PATH INFORMATICS,E7D793597F4A4DC3A2F6E089D36227F7,Employee,,,2025-01-18T01:42:34.000,iibarraflores,Weekly HOP,,iibarraflores@chla.usc.edu,plmlaboratoryinformationservice@chla.usc.edu,Duque 2,false,800bb6c8d2ac11efa852000d3ac39e50,Frs_data_escalation_watch,800bb6c5d2ac11efa852000d3ac39e50,Frs_data_escalation_watch,800bb6c3d2ac11efa852000d3ac39e50,Frs_data_escalation_watch,800bb6c7d2ac11efa852000d3ac39e50,Frs_data_escalation_watch,,Default,,Failure,,peyu@chla.usc.edu,,,,2A87D976F26B44A9A0304F6C34327FE9,Hardware Support,0,,,false,false,false,,,,,,10,,,OrganizationalUnit,978ABB09369944C1991468FC458F488E,,,,5,Agent,,,Web Client,,,,,0,,,,,false,,Incident 1831599: ,,BDA4662239184FE0983C6DD76324FE9C,,,0,false,,,,,,,,,Technology Service Delivery,95DE98E57774436191BB9F1CE880C06D,,,,,,,,,,,,,,,,,,,,true,,iibarraflores,,,2,,,,,,,,2017-12-02T08:15:27.000,true,,,,,,,,,,,,,,,,,,"Date/Time of loss:
+
+Location of loss:
+
+Item: 
+(Latop, MAC, iPad, iPhone, Android, Flash Drive, External Hard Drive, Tablet)
+
+Asset tag: (if known)
+
+***Serial Number (if found by SD in Airwatch):
+
+***Call-back number (not lost device #):
+
+Was there any PHI documentation with device:
+
+Police Report filed:
+
+Was system encrypted:
+
+Was AirWatch deactivation deployed:",,,Email:iibarraflores@chla.usc.edu; Phone:323/361-4816,,,,,,,,,,,,,,true,,,,,false,Chat Incident(s),,,,,,,,,,,,,,,false,,,,,,,,,,,,,,,,
+Connectivity,5DFB1B88F1CE425A9B74F0913C8802D8,Connectivity,5DFB1B88F1CE425A9B74F0913C8802D8,Configuration Error,A5A3FACC440C4DFBB5C7F2CE2A9EB44E,InternalServices,2025-02-20T05:35:54.000,850050,iibarraflores,2025-01-15T03:28:24.000,iibarraflores@chla.usc.edu,,Medium,1AFFC174C7EA4AB79CCA6B15EB67006D,1831602,true,false,false,InternalServices,2025-02-20T05:35:54.000,(323) /361-4816,3,29CD5D78E16F4D82916C3E933A600096,"Ibarra Flores, Irvin",FBC0866204BB4A48BE5C4061F01E3117,Employee,C2E256AFED324D75AD67579267DFFC45,Computer is reconnected to network. (Automatically Closed),Hardware Support,2A87D976F26B44A9A0304F6C34327FE9,,,,,Phone,EF789CE160E742F99623DBB4D29C045C,Closed,2905321A3B12477A82E94E289F47786B,Please grant computer to the CHLA network,"Please rejoin the following computer to the CHLA network. Computer may need to be reimaged as it has been disconnected from the network for an unknown amount of time.
+
+Host name: L-N54401 - T14s (AutoClosed)",Medium,44021B6CC6E44E598868C4B3306053AE,iibarraflores,,iibarraflores,FBC0866204BB4A48BE5C4061F01E3117,LAB PATH INFORMATICS,E7D793597F4A4DC3A2F6E089D36227F7,Employee,,,2025-02-15T05:40:46.000,iibarraflores,Weekly HOP,,iibarraflores@chla.usc.edu,plmlaboratoryinformationservice@chla.usc.edu,Duque 2,false,6565de66d2ae11efa852000d3ac39e50,Frs_data_escalation_watch,6565de64d2ae11efa852000d3ac39e50,Frs_data_escalation_watch,6565de63d2ae11efa852000d3ac39e50,Frs_data_escalation_watch,6565de65d2ae11efa852000d3ac39e50,Frs_data_escalation_watch,,Default,,Failure,,peyu@chla.usc.edu,,,,2A87D976F26B44A9A0304F6C34327FE9,Hardware Support,0,,,false,false,false,,,,,,170,,,OrganizationalUnit,978ABB09369944C1991468FC458F488E,,,,5,Agent,,,Web Client,,,,,0,,,,,false,,Incident 1831602: ,,BDA4662239184FE0983C6DD76324FE9C,,,0,false,,,,,,,,,Technology Service Delivery,95DE98E57774436191BB9F1CE880C06D,,,,,,,,,,,,,,,,,,,,true,,iibarraflores,,,30,,,,,,,,2017-12-02T08:15:27.000,true,,,,,,,,,,,,,,,,,,"Date/Time of loss:
+
+Location of loss:
+
+Item: 
+(Latop, MAC, iPad, iPhone, Android, Flash Drive, External Hard Drive, Tablet)
+
+Asset tag: (if known)
+
+***Serial Number (if found by SD in Airwatch):
+
+***Call-back number (not lost device #):
+
+Was there any PHI documentation with device:
+
+Police Report filed:
+
+Was system encrypted:
+
+Was AirWatch deactivation deployed:",,,Email:iibarraflores@chla.usc.edu; Phone:(323) /361-4816,,,,,,,,,,,,,,true,,,,,false,Chat Incident(s),,,,,,,,,,,,,,,false,,,,,,,,,,,,,,,,
+KIDS Inpatient,C2A78A5B8D62434A84428E2C1B75AFD1,KIDS Inpatient,C2A78A5B8D62434A84428E2C1B75AFD1,Auto Resolve,05D59023D76943C3B77A56F223F01762,InternalServices,2021-09-19T01:11:30.000,494597,clee,2021-08-28T04:36:43.000,CLee@chla.usc.edu,,Medium,1AFFC174C7EA4AB79CCA6B15EB67006D,1584235,true,false,false,InternalServices,2021-09-19T01:11:31.000,323-361-4518,3,29CD5D78E16F4D82916C3E933A600096,"Lee, Catherine",2A27AE998A2E4DCE908CAC4DA9E4CDF6,Employee,04E274A06A544BFBB8B644A2EDCCFAB7,"Resolution Steps/Details: client said to close.  ref lab alias issue
+Contact/Process Providing Permission to Close: Catherine M. Lee (Automatically Closed)",Software Support,08B4E71DCC3D4C43B311CDA1CBCF24DD,,,,,Phone,EF789CE160E742F99623DBB4D29C045C,Closed,2905321A3B12477A82E94E289F47786B,Please help cycle Quest servers. see Description for details,"Please help cycle Quest servers. see Description for details:
+
+Cycle Quest Servers
+
+Instructions for cycling:
+Stop and then Start the Quest Outbound and Inbound interfaces.
+Please refer to attachment for instructions.
+
+I had to update a few Quest order/result aliases.  Please perform the following tasks to activate the changes. 
+1)  Recache codesets 200 and 14003
+a.  crmtest 6024 200
+b.  crmtest 6024 14003
+2)  Cycle CPM ESI (for RLI)
+a.  Cycle –entry 261
+3)  Cycle CPM ESI Server
+a.  Cycle –entry 250
+4)  Stop and Start the Quest Interfaces (DO NOT USE “CYCLE”)
+a.  Stop –entry 731 (Quest Out)
+b.  Stop –entry 735 (Quest In)
+c.  Wait until the interface is stopped
+ i.   Server –entry <server id> will show you the status
+d.  Start 731
+e.  Start 735
+
+Do ""crmtest 6024 200"" and a ""crmtest 6024 14003"" on nodes 1 & 2 for the inbound aliases.
+Cycle the Quest outbound interface for the outbound aliases. 
+
+Please let me know via email when tasks are completed.  Thanks.
+ (AutoClosed)",Medium,44021B6CC6E44E598868C4B3306053AE,clee,,clee,2A27AE998A2E4DCE908CAC4DA9E4CDF6,LAB PATH INFORMATICS,E7D793597F4A4DC3A2F6E089D36227F7,Employee,2A27AE998A2E4DCE908CAC4DA9E4CDF6,Employee,2021-09-14T01:12:31.000,InternalServices,Weekly HOP,,CLee@chla.usc.edu,listeam@chla.usc.edu,Duque 2,false,04ec27b2077f11ec819006e0e78e9390,Frs_data_escalation_watch,04ec27b0077f11ec819006e0e78e9390,Frs_data_escalation_watch,04ec27ab077f11ec819006e0e78e9390,Frs_data_escalation_watch,04ec27b1077f11ec819006e0e78e9390,Frs_data_escalation_watch,CLee@chla.usc.edu,Default,,Failure,323-361-4518,peyu@chla.usc.edu,,,,08B4E71DCC3D4C43B311CDA1CBCF24DD,Software Support,,,,false,false,false,,,,,,30,,,OrganizationalUnit,978ABB09369944C1991468FC458F488E,,,,5,Agent,,"Lee, Catherine",Web Client,,,,,0,,,,,false,,Incident 1584235: ,,BDA4662239184FE0983C6DD76324FE9C,,,438970457,false,,,,,,Resolved,,,Clinical Systems Analysis and Consulting Services,2183424CD367437B9D042B7365A5062C,Application Managed Services,,3-Moderate/Limited,3-Moderate/Limited,IDGIW2WRIDVLKAMTY4B8X6MOFSY51W,PowerChart,Clinical Documentation,,,,james.pohle@cerner.com,18162013519,James Pohle,Medium,,,,,,true,,clee,,,16,KIDS Prod,,,,,,,2018-01-06T10:00:29.000,true,,,,,,,,,,,,,,,,,,"Date/Time of loss:
+
+Location of loss:
+
+Item: 
+(Latop, MAC, iPad, iPhone, Android, Flash Drive, External Hard Drive, Tablet)
+
+Asset tag: (if known)
+
+***Serial Number (if found by SD in Airwatch):
+
+***Call-back number (not lost device #):
+
+Was there any PHI documentation with device:
+
+Police Report filed:
+
+Was system encrypted:
+
+Was AirWatch deactivation deployed:",,,Email:CLee@chla.usc.edu; Phone:323-361-4518,,,,,,,,,,,,,,true,,,,,false,Chat Incident(s),,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+End User Device,A449A5E6E53943DB9CC2EDCB04CD9409,End User Device,A449A5E6E53943DB9CC2EDCB04CD9409,Hardware Failure,245CEFC09E6044CA9981496807AFF971,InternalServices,2025-01-27T14:27:05.000,216160,clee,2025-01-17T02:57:20.000,MJimeno@chla.usc.edu,,Medium,1AFFC174C7EA4AB79CCA6B15EB67006D,1832112,true,false,false,InternalServices,2025-01-27T14:27:05.000,323/361-3646,3,29CD5D78E16F4D82916C3E933A600096,"Jimeno, Marilou",4A2B46D361254CD88214A2852EAED0ED,Employee,D68DC47DE7E74DB880BF0B5652F854BD,Ulysse replaced the printer. (Automatically Closed),Hardware Support,2A87D976F26B44A9A0304F6C34327FE9,,,,,Phone,EF789CE160E742F99623DBB4D29C045C,Closed,2905321A3B12477A82E94E289F47786B,Zebra label printer Printhead plate is loose,"Zebra label printer Printhead plate is loose
+   Zebra label printer:  N56832
+  10.131.21.188
+Printer Queue:  LABLABELML-ZL0001
+   2E Duque,  Main Lab , Rm 2-293
+
+See attached screenshots
+Replace printerhead error! (AutoClosed)",Medium,44021B6CC6E44E598868C4B3306053AE,mjimeno,,clee,2A27AE998A2E4DCE908CAC4DA9E4CDF6,LAB PATH INFORMATICS,E7D793597F4A4DC3A2F6E089D36227F7,Employee,2A27AE998A2E4DCE908CAC4DA9E4CDF6,Employee,2025-01-22T14:30:34.000,htnguyen,Weekly HOP,,CLee@chla.usc.edu,plmlaboratoryinformationservice@chla.usc.edu,Duque 2,false,320c73b0d43c11efa84f000d3afb06d1,Frs_data_escalation_watch,320c73add43c11efa84f000d3afb06d1,Frs_data_escalation_watch,320c73abd43c11efa84f000d3afb06d1,Frs_data_escalation_watch,320c73afd43c11efa84f000d3afb06d1,Frs_data_escalation_watch,CLee@chla.usc.edu,Default,,Failure,323/361-4518,peyu@chla.usc.edu,,,,2A87D976F26B44A9A0304F6C34327FE9,Hardware Support,0,,,false,false,false,,,,,,262,,,OrganizationalUnit,978ABB09369944C1991468FC458F488E,,,,5,Agent,,"Lee, Catherine",Web Client,,,,,0,,,,,false,,Incident 1832112: ,Printer,BDA4662239184FE0983C6DD76324FE9C,,,0,false,Printer,1C07ADA45B1245E3B2C0CF6BF89EA2CF,,,,,,,Technology Service Delivery,95DE98E57774436191BB9F1CE880C06D,,,,,,,,,,,,,,,,,,,,true,,mjimeno,,,4,,,,,,,,2017-11-02T04:26:46.000,true,,,,,,,,,,,,,,,,,,"Date/Time of loss:
+
+Location of loss:
+
+Item: 
+(Latop, MAC, iPad, iPhone, Android, Flash Drive, External Hard Drive, Tablet)
+
+Asset tag: (if known)
+
+***Serial Number (if found by SD in Airwatch):
+
+***Call-back number (not lost device #):
+
+Was there any PHI documentation with device:
+
+Police Report filed:
+
+Was system encrypted:
+
+Was AirWatch deactivation deployed:",,,Email:MJimeno@chla.usc.edu; Phone:323/361-3646,,,,,,,,,,,,,,true,,,,,false,Chat Incident(s),,1C07ADA45B1245E3B2C0CF6BF89EA2CF,,,,,,,,,,,,,false,,,,,,,,,,,,,,,,
+Connectivity,5DFB1B88F1CE425A9B74F0913C8802D8,Connectivity,5DFB1B88F1CE425A9B74F0913C8802D8,Configuration Error,A5A3FACC440C4DFBB5C7F2CE2A9EB44E,InternalServices,2024-05-23T04:42:33.000,268603,iibarraflores,2024-05-11T02:05:50.000,iibarraflores@chla.usc.edu,,Medium,1AFFC174C7EA4AB79CCA6B15EB67006D,1783394,true,false,false,InternalServices,2024-05-23T04:42:33.000,323/361-4816,3,29CD5D78E16F4D82916C3E933A600096,"Ibarra Flores, Irvin",FBC0866204BB4A48BE5C4061F01E3117,Employee,05F8F53F7E7948C5B013F79DC06BD6B3,Confirmed that the mac address and IP address are correlated.  (Automatically Closed),Hardware Support,2A87D976F26B44A9A0304F6C34327FE9,,,,,Phone,EF789CE160E742F99623DBB4D29C045C,Closed,2905321A3B12477A82E94E289F47786B,Issue maintaining IP,"Computer with the mac address below was statically assigned to IP below. We relocated the computer to a new port in the room and the computer lost that static IP, and gained a 169.xxx.xxx.xxx while connected to this new port and did not have an internet connection.
+
+Please confirm that the following MAC address has been statically assigned to the IP address and reserve the IP address for this MAC address if not statically assigned:
+
+MAC Address:8C-8C-AA-9A-45-F5
+IP Address: 10.134.10.109 (AutoClosed)",Medium,44021B6CC6E44E598868C4B3306053AE,iibarraflores,,iibarraflores,FBC0866204BB4A48BE5C4061F01E3117,LAB PATH INFORMATICS,E7D793597F4A4DC3A2F6E089D36227F7,Employee,,,2024-05-18T05:01:29.000,iibarraflores,Weekly HOP,,iibarraflores@chla.usc.edu,plmlaboratoryinformationservice@chla.usc.edu,Duque 2,false,f66234030f0211efa843000d3afb06d1,Frs_data_escalation_watch,f66234010f0211efa843000d3afb06d1,Frs_data_escalation_watch,f66234000f0211efa843000d3afb06d1,Frs_data_escalation_watch,f66234020f0211efa843000d3afb06d1,Frs_data_escalation_watch,,Default,,Failure,,peyu@chla.usc.edu,,,,2A87D976F26B44A9A0304F6C34327FE9,Hardware Support,0,,,false,false,false,,,,,,60,,,OrganizationalUnit,978ABB09369944C1991468FC458F488E,,,,5,Agent,,,Web Client,,,,,0,,,,,false,,Incident 1783394: ,,BDA4662239184FE0983C6DD76324FE9C,,,0,false,,,,,,,,,Technology Service Delivery,95DE98E57774436191BB9F1CE880C06D,,,,,,,,,,,,,,,,,,,,true,,iibarraflores,,,6,,,,,,,,2017-12-02T08:15:27.000,true,,,,,,,,,,,,,,,,,,"Date/Time of loss:
+
+Location of loss:
+
+Item: 
+(Latop, MAC, iPad, iPhone, Android, Flash Drive, External Hard Drive, Tablet)
+
+Asset tag: (if known)
+
+***Serial Number (if found by SD in Airwatch):
+
+***Call-back number (not lost device #):
+
+Was there any PHI documentation with device:
+
+Police Report filed:
+
+Was system encrypted:
+
+Was AirWatch deactivation deployed:",,,Email:iibarraflores@chla.usc.edu; Phone:323/361-4816,,,,,,,,,,,,,,true,,,,,false,Chat Incident(s),,,,,,,,,,,,,,,false,,,,,,,,,,,,,,,,
+Desktop,C74EA08C135249099CEA09E85B721D5C,Desktop,C74EA08C135249099CEA09E85B721D5C,Auto Resolve,05D59023D76943C3B77A56F223F01762,InternalServices,2024-09-02T05:07:02.000,2641323,jskinta,2024-05-10T02:17:57.000,jskinta@chla.usc.edu,,Medium,1AFFC174C7EA4AB79CCA6B15EB67006D,1783133,true,false,false,InternalServices,2024-09-02T05:07:02.000,323/337-5234,3,29CD5D78E16F4D82916C3E933A600096,"Skinta, John",78C713243DE94AC2BD8DC1E340DCB5DD,Employee,2E3915DBF8E24DCB93F4419CA539B893,IJ 8/27 wrote to team to see if the problem was resolved and it is (Automatically Closed),Software Support,08B4E71DCC3D4C43B311CDA1CBCF24DD,,,,,Phone,EF789CE160E742F99623DBB4D29C045C,Closed,2905321A3B12477A82E94E289F47786B,Photoshop License for Dr. Larry Wang has expired,Photoshop License for Dr. Larry Wang has expired.  Can this be renewed ASAP? (AutoClosed),Medium,44021B6CC6E44E598868C4B3306053AE,jskinta,,jskinta,78C713243DE94AC2BD8DC1E340DCB5DD,LAB PATH INFORMATICS,E7D793597F4A4DC3A2F6E089D36227F7,Employee,,,2024-08-28T05:08:30.000,ijusth,Weekly HOP,,jskinta@chla.usc.edu,plmlaboratoryinformationservice@chla.usc.edu,Duque 2,false,0884688c0e3911efa846002248794ab6,Frs_data_escalation_watch,0884688a0e3911efa846002248794ab6,Frs_data_escalation_watch,088468890e3911efa846002248794ab6,Frs_data_escalation_watch,0884688b0e3911efa846002248794ab6,Frs_data_escalation_watch,,Default,,Failure,,peyu@chla.usc.edu,,,,08B4E71DCC3D4C43B311CDA1CBCF24DD,Software Support,0,,,false,false,false,,,,,,22,,,OrganizationalUnit,978ABB09369944C1991468FC458F488E,,,,5,Agent,,,Web Client,,,,,0,,,,,false,,Incident 1783133: ,Adobe,BDA4662239184FE0983C6DD76324FE9C,,,0,false,Adobe,8285D536D3E543C786E8047D6991396C,,,,,,,Application and System Management Services,04F8982164F04F03BA1B146C7AB0786D,,,,,,,,,,,,,,,,,,,,true,,jskinta,,,109,,,,,,,,,true,,,,,,,,,,,,,,,,,,"Date/Time of loss:
+
+Location of loss:
+
+Item: 
+(Latop, MAC, iPad, iPhone, Android, Flash Drive, External Hard Drive, Tablet)
+
+Asset tag: (if known)
+
+***Serial Number (if found by SD in Airwatch):
+
+***Call-back number (not lost device #):
+
+Was there any PHI documentation with device:
+
+Police Report filed:
+
+Was system encrypted:
+
+Was AirWatch deactivation deployed:",,,Email:jskinta@chla.usc.edu; Phone:323/337-5234,,,,,,,,,,,,,,true,,,,,false,Chat Incident(s),,8285D536D3E543C786E8047D6991396C,,,,,,,,,,,,,false,,,,,,,,,,,,,,,,
+Connectivity,5DFB1B88F1CE425A9B74F0913C8802D8,Connectivity,5DFB1B88F1CE425A9B74F0913C8802D8,Configuration Error,A5A3FACC440C4DFBB5C7F2CE2A9EB44E,InternalServices,2024-05-22T05:05:07.000,222905,iibarraflores,2024-05-11T06:10:02.000,iibarraflores@chla.usc.edu,,Medium,1AFFC174C7EA4AB79CCA6B15EB67006D,1783451,true,false,false,InternalServices,2024-05-22T05:05:07.000,323/361-4816,3,29CD5D78E16F4D82916C3E933A600096,"Ibarra Flores, Irvin",FBC0866204BB4A48BE5C4061F01E3117,Employee,017219B6A5434B5089AF02298807A41A,Computer was returned and confirmed to be joined. (Automatically Closed),Hardware Support,2A87D976F26B44A9A0304F6C34327FE9,,,,,Phone,EF789CE160E742F99623DBB4D29C045C,Closed,2905321A3B12477A82E94E289F47786B,Please rejoin computer to domain,"Please help rejoin computer with hostname below to CHLA domain:
+
+Hostname: L-N57609  -  PW033E8G
+ost Name: L-N57609
+
+Phone number: 323-361-4816
+
+Building: Duque, 2nd Floor
+
+Door #: 2-101
+
+Alternative contact: 323-361-6196
+
+Best time to contact you: M-F, 10AM-5PM (AutoClosed)",Medium,44021B6CC6E44E598868C4B3306053AE,iibarraflores,,iibarraflores,FBC0866204BB4A48BE5C4061F01E3117,LAB PATH INFORMATICS,E7D793597F4A4DC3A2F6E089D36227F7,Employee,,,2024-05-17T05:07:15.000,iibarraflores,Weekly HOP,,iibarraflores@chla.usc.edu,plmlaboratoryinformationservice@chla.usc.edu,Duque 2,false,b8ab49910f2211efa843000d3afb06d1,Frs_data_escalation_watch,b8ab498f0f2211efa843000d3afb06d1,Frs_data_escalation_watch,b8ab498e0f2211efa843000d3afb06d1,Frs_data_escalation_watch,b8ab49900f2211efa843000d3afb06d1,Frs_data_escalation_watch,,Default,,Failure,,peyu@chla.usc.edu,,,,2A87D976F26B44A9A0304F6C34327FE9,Hardware Support,0,,,false,false,false,,,,,,92,,,OrganizationalUnit,978ABB09369944C1991468FC458F488E,,,,5,Agent,,,Web Client,,,,,0,,,,,false,,Incident 1783451: ,,BDA4662239184FE0983C6DD76324FE9C,,,0,false,,,,,,,,,Technology Service Delivery,95DE98E57774436191BB9F1CE880C06D,,,,,,,,,,,,,,,,,,,,true,,iibarraflores,,,5,,,,,,,,2017-12-02T08:15:27.000,true,,,,,,,,,,,,,,,,,,"Date/Time of loss:
+
+Location of loss:
+
+Item: 
+(Latop, MAC, iPad, iPhone, Android, Flash Drive, External Hard Drive, Tablet)
+
+Asset tag: (if known)
+
+***Serial Number (if found by SD in Airwatch):
+
+***Call-back number (not lost device #):
+
+Was there any PHI documentation with device:
+
+Police Report filed:
+
+Was system encrypted:
+
+Was AirWatch deactivation deployed:",,,Email:iibarraflores@chla.usc.edu; Phone:323/361-4816,,,,,,,,,,,,,,true,,,,,false,Chat Incident(s),,,,,,,,,,,,,,,false,,,,,,,,,,,,,,,,
+End User Device,A449A5E6E53943DB9CC2EDCB04CD9409,End User Device,A449A5E6E53943DB9CC2EDCB04CD9409,Auto Resolve,05D59023D76943C3B77A56F223F01762,InternalServices,2021-07-05T02:11:05.000,826513,mjimeno,2021-05-29T02:24:47.000,MJimeno@chla.usc.edu,,Medium,1AFFC174C7EA4AB79CCA6B15EB67006D,1565740,true,false,false,InternalServices,2021-07-05T02:11:05.000,323-361-3646,3,29CD5D78E16F4D82916C3E933A600096,"Jimeno, Marilou",4A2B46D361254CD88214A2852EAED0ED,Employee,75A2597732594A2DB7566F78944BC616,IJ 6/29  this printer not need so closing task (Automatically Closed),Hardware Support,2A87D976F26B44A9A0304F6C34327FE9,,,,,Phone,EF789CE160E742F99623DBB4D29C045C,Closed,2905321A3B12477A82E94E289F47786B,Barcode unreadable from labels printed in ASC. Print is very faded.,"Barcode unreadable from labels printed in ASC. Print is very faded.  Please make necessary adjustments to all Zebra label printers in ASC department.  Thank you.
+
+Please see attachment for sample label.
+
+Call Back Phone #: 323-361-           Polycom #:             
+Time Availability:  
+Asset Tag # :
+Citrix #:
+Anonymous #:
+Time of Incident:
+
+Patient Info: “Please attach a screenshot of Patients Info, do not type it in”
+
+Patient Care Impact:  (Note** single person impacted = P3, Dept. wide, whole floor/unit = P2, workaround in place = P3)  
+               Yes	    No             
+Browser -
+Local or Remote - 
+
+Problem:  (Please attach screenshots if possible) (AutoClosed)",Medium,44021B6CC6E44E598868C4B3306053AE,mjimeno,,mjimeno,4A2B46D361254CD88214A2852EAED0ED,LAB PATH INFORMATICS,E7D793597F4A4DC3A2F6E089D36227F7,Employee,,,2021-06-30T02:21:03.000,ijusth,Weekly HOP,,MJimeno@chla.usc.edu,listeam@chla.usc.edu,Duque 2,false,c091994bbfeb11eb813b068b1c35975b,Frs_data_escalation_watch,c0919947bfeb11eb813b068b1c35975b,Frs_data_escalation_watch,c0919946bfeb11eb813b068b1c35975b,Frs_data_escalation_watch,c0919949bfeb11eb813b068b1c35975b,Frs_data_escalation_watch,,Default,,Failure,,peyu@chla.usc.edu,,,,2A87D976F26B44A9A0304F6C34327FE9,Hardware Support,,,,false,false,false,,,,,,240,,,OrganizationalUnit,978ABB09369944C1991468FC458F488E,,,,5,Agent,,,Web Client,,,,,0,,,,,false,,Incident 1565740: ,,BDA4662239184FE0983C6DD76324FE9C,,,0,false,,,Waiting for replacement Zebra Printer for ASC OR4,,,,,,Technology Service Delivery,95DE98E57774436191BB9F1CE880C06D,,,,,,,,,,,,,,,,,,,,true,,mjimeno,,,31,,,,,,,,2017-11-02T04:26:46.000,true,,,,,,,,,,,,,,,,,,"Date/Time of loss:
+
+Location of loss:
+
+Item: 
+(Latop, MAC, iPad, iPhone, Android, Flash Drive, External Hard Drive, Tablet)
+
+Asset tag: (if known)
+
+***Serial Number (if found by SD in Airwatch):
+
+***Call-back number (not lost device #):
+
+Was there any PHI documentation with device:
+
+Police Report filed:
+
+Was system encrypted:
+
+Was AirWatch deactivation deployed:",,,Email:MJimeno@chla.usc.edu; Phone:323-361-3646,,,,,,,,,,,,,,true,,,,,false,Chat Incident(s),,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+End User Device,A449A5E6E53943DB9CC2EDCB04CD9409,End User Device,A449A5E6E53943DB9CC2EDCB04CD9409,Configuration Error,A5A3FACC440C4DFBB5C7F2CE2A9EB44E,InternalServices,2019-07-02T23:18:38.000,120747,jskinta,2019-06-27T01:46:11.000,jskinta@chla.usc.edu,,Medium,1AFFC174C7EA4AB79CCA6B15EB67006D,1403945,true,false,false,InternalServices,2019-07-02T23:18:38.000,3233612906,3,29CD5D78E16F4D82916C3E933A600096,"Skinta, John",78C713243DE94AC2BD8DC1E340DCB5DD,Profile.Employee,0E05D787032F4040B88D0C33E78EEF41,Bridged extension to the phone in this room.. (Automatically Closed),Hardware Support,2A87D976F26B44A9A0304F6C34327FE9,,,,,Phone,EF789CE160E742F99623DBB4D29C045C,Closed,2905321A3B12477A82E94E289F47786B,Attending Pathologist urgent move 6/27/2019,This is an urgent request.  Tomorrow morning (6/27/19) Dr. Szymanski will temporarily move to a new office.  Can I have her extension moved to the new office?  Can Dr. Szymanski's extension of 11789 be moved to where extension 15813 currently is.  11789 can take the place of 15813 as that attending retired.  Please contact me with any questions. (AutoClosed),Medium,44021B6CC6E44E598868C4B3306053AE,jskinta,,jskinta,78C713243DE94AC2BD8DC1E340DCB5DD,LAB PATH INFORMATICS,E7D793597F4A4DC3A2F6E089D36227F7,Profile.Employee,,,2019-06-27T23:22:49.000,jrobles,Weekly HOP,,jskinta@chla.usc.edu,listeam@chla.usc.edu,Duque 2,false,443b8ddf984311e9811902645f3c971d,Frs_data_escalation_watch,3e2dde43984311e9811902645f3c971d,Frs_data_escalation_watch,3e2dde42984311e9811902645f3c971d,Frs_data_escalation_watch,443b8dde984311e9811902645f3c971d,Frs_data_escalation_watch,,Default,,Failure,,peyu@chla.usc.edu,,,,2A87D976F26B44A9A0304F6C34327FE9,Hardware Support,,,,false,false,false,,,,,,35,,,OrganizationalUnit,978ABB09369944C1991468FC458F488E,,,,5,Agent,,,Web Client,,,,,0,,,,,false,,Incident 1403945: ,,BDA4662239184FE0983C6DD76324FE9C,,,0,false,,,,,,,,,Technology Service Delivery,95DE98E57774436191BB9F1CE880C06D,,,,,,,,,,,,,,,,,,,,true,,jskinta,,,0,,,,,,,,,true,,,,,,,,,,,,,,,,,,"Date/Time of loss:
+
+Location of loss:
+
+Item: 
+(Latop, MAC, iPad, iPhone, Android, Flash Drive, External Hard Drive, Tablet)
+
+Asset tag: (if known)
+
+Was there any PHI documentation with device:
+
+Police Report filed:
+
+Was system encrypted:
+
+Was AirWatch deactivation deployed:",,,Email:jskinta@chla.usc.edu; Phone:3233612906,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,

@@ -2,6 +2,10 @@
 Worklog Store Module
 Manages worklog data imported from iTrack worklog exports.
 
+Data Source Modes:
+- CSV Mode: Worklog data from local CSV (legacy, for backward compatibility)
+- Snowflake Mode: Worklog data from Snowflake DS_VW_ITRACK_LPM_WORKLOG table
+
 Each worklog entry represents a team member's activity log for a task.
 """
 import os
@@ -30,6 +34,10 @@ class WorklogStore:
     """
     Manages worklog data for tracking team member activity.
     
+    Data Source Modes:
+    - CSV Mode (legacy): All data from local CSV file
+    - Snowflake Mode: Worklog data from Snowflake
+    
     Key fields:
     - TaskNum: Task number (links to main task data)
     - Owner: Team member who logged the activity
@@ -40,13 +48,58 @@ class WorklogStore:
     - SprintNumber: Sprint when the activity was logged (calculated from LogDate)
     """
     
-    def __init__(self, store_path: str = None):
+    def __init__(self, store_path: str = None, use_snowflake: bool = None):
         self.store_path = store_path or DEFAULT_WORKLOG_PATH
-        self.worklog_df = self._load_store()
         self.calendar = get_sprint_calendar()
+        
+        # Determine data source mode
+        if use_snowflake is None:
+            # Auto-detect: use Snowflake if explicitly enabled in config
+            from modules.snowflake_connector import is_snowflake_enabled
+            self.use_snowflake = is_snowflake_enabled()
+        else:
+            self.use_snowflake = use_snowflake
+        
+        self.worklog_df = self._load_store()
     
     def _load_store(self) -> pd.DataFrame:
-        """Load worklog data from CSV"""
+        """Load worklog data from store (CSV or Snowflake mode)"""
+        if self.use_snowflake:
+            return self._load_from_snowflake()
+        else:
+            return self._load_from_csv()
+    
+    def _load_from_snowflake(self) -> pd.DataFrame:
+        """Load worklog data from Snowflake"""
+        from modules.snowflake_connector import fetch_worklogs_from_snowflake, is_snowflake_configured
+        
+        if not is_snowflake_configured():
+            print("WorklogStore: Snowflake not configured, falling back to CSV")
+            return self._load_from_csv()
+        
+        # Fetch worklog data from Snowflake
+        snowflake_df, success, message = fetch_worklogs_from_snowflake()
+        
+        if not success or snowflake_df.empty:
+            print(f"WorklogStore: Failed to load from Snowflake: {message}")
+            # Fall back to CSV if Snowflake fails
+            return self._load_from_csv()
+        
+        # Ensure TaskNum is string
+        if 'TaskNum' in snowflake_df.columns:
+            snowflake_df['TaskNum'] = snowflake_df['TaskNum'].astype(str)
+        
+        # Calculate SprintNumber from LogDate
+        if 'LogDate' in snowflake_df.columns:
+            snowflake_df['SprintNumber'] = snowflake_df['LogDate'].apply(
+                lambda d: self.calendar.get_sprint_for_date(d) if pd.notna(d) else None
+            )
+        
+        print(f"WorklogStore: Loaded {len(snowflake_df)} worklog entries from Snowflake")
+        return snowflake_df
+    
+    def _load_from_csv(self) -> pd.DataFrame:
+        """Load worklog data from CSV (legacy mode)"""
         if not os.path.exists(self.store_path):
             return pd.DataFrame()
         

@@ -3,6 +3,7 @@ Constants and configuration values for the Sprint Dashboard
 Values are loaded from config file with fallback defaults
 """
 import os
+from datetime import datetime
 try:
     import tomllib
 except ImportError:
@@ -77,6 +78,35 @@ STATUS_EXCLUDED = [
     STATUS_RESOLVED, 
     STATUS_DONE,
     STATUS_EXCLUDED_CARRYOVER
+]
+
+# =============================================================================
+# IMPORT FILTERING CONFIGURATION
+# Tasks created BEFORE this date: only import open statuses
+# Tasks created ON or AFTER this date: import all statuses
+# =============================================================================
+IMPORT_THRESHOLD_DATE = datetime(2026, 1, 1)
+
+# Task statuses (from iTrack Task_Status field)
+TASK_STATUS_COMPLETED = "Completed"
+TASK_STATUS_ACCEPTED = "Accepted"
+TASK_STATUS_CANCELLED = "Cancelled"
+TASK_STATUS_WAITING = "Waiting"
+TASK_STATUS_ASSIGNED = "Assigned"
+TASK_STATUS_LOGGED = "Logged"
+
+# Open statuses - tasks with these statuses are imported regardless of date
+OPEN_TASK_STATUSES = [
+    TASK_STATUS_ACCEPTED,
+    TASK_STATUS_WAITING,
+    TASK_STATUS_ASSIGNED,
+    TASK_STATUS_LOGGED,
+]
+
+# Closed statuses - tasks with these statuses are excluded if created before threshold
+CLOSED_TASK_STATUSES = [
+    TASK_STATUS_COMPLETED,
+    TASK_STATUS_CANCELLED,
 ]
 
 # File Paths

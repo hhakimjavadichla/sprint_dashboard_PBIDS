@@ -17,16 +17,10 @@ from components.capacity_widget import display_capacity_summary
 from utils.exporters import export_to_csv, export_to_excel
 from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, get_backlog_column_order, COLUMN_WIDTHS, clean_subject_column
 
-st.set_page_config(
-    page_title="Dashboard",
-    page_icon="📊",
-    layout="wide"
-)
-
 # Apply custom tooltip styles
 apply_grid_styles()
 
-st.title("📊 Dashboard")
+st.title("📊 Overview")
 st.caption("_All Tasks Overview — PBIDS Team_")
 
 # Require authentication
@@ -46,7 +40,7 @@ if all_tasks is None or all_tasks.empty:
     st.warning("⚠️ No tasks in the system")
     st.info("Upload tasks to view the dashboard")
     if get_user_role() == 'Admin':
-        st.page_link("pages/2_📤_Upload_Tasks.py", label="📤 Upload Tasks", icon="📤")
+        st.page_link("pages/7_📤_Upload_Tasks.py", label="📤 Upload Tasks", icon="📤")
     st.stop()
 
 # Get sprint calendar for filters

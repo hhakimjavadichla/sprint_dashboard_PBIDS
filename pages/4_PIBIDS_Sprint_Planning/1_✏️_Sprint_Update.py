@@ -17,16 +17,10 @@ from utils.constants import VALID_SECTIONS
 from utils.exporters import export_to_excel
 from components.metrics_dashboard import display_ticket_task_metrics
 
-st.set_page_config(
-    page_title="Sprint Planning",
-    page_icon="✏️",
-    layout="wide"
-)
-
 # Apply custom tooltip styles
 apply_grid_styles()
 
-st.title("✏️ Sprint Planning")
+st.title("✏️ Sprint Update")
 st.caption("_PBIDS Team_")
 
 # Require admin access
@@ -69,7 +63,7 @@ all_tasks = task_store.get_all_tasks()
 if all_tasks.empty:
     st.warning("📭 No tasks in the system yet.")
     st.info("Upload tasks first to plan sprints.")
-    st.page_link("pages/2_📤_Upload_Tasks.py", label="📤 Upload Tasks", icon="📤")
+    st.page_link("pages/7_📤_Upload_Tasks.py", label="📤 Upload Tasks", icon="📤")
     st.stop()
 
 # Get current sprint
@@ -141,7 +135,7 @@ if sprint_tasks.empty:
     2. Select tasks you want to include in this sprint
     3. Assign them to Sprint {}
     """.format(selected_sprint_num))
-    st.page_link("pages/8_📋_Work_Backlogs.py", label="📋 Go to Work Backlogs & Sprint Assignment", icon="📋")
+    st.page_link("pages/4_PIBIDS_Sprint_Planning/2_📋_Backlog_Assign.py", label="📋 Go to Backlog Assign", icon="📋")
     st.stop()
 
 # Filters
@@ -454,78 +448,11 @@ if not filtered_tasks.empty:
     # Get edited data
     edited_df = pd.DataFrame(grid_response['data'])
     
-    # Export section - exports current filtered view
-    col_export1, col_export2 = st.columns([2, 6])
+    # Save button - right below the table
+    col_save1, col_save2, col_save3 = st.columns([1, 2, 1])
     
-    with col_export1:
-        # Export current filtered view
-        export_df = edited_df.copy()
-        # Remove internal columns from export
-        export_cols = [c for c in export_df.columns if not c.startswith('_')]
-        export_df = export_df[export_cols]
-        
-        excel_data = export_to_excel(export_df, sheet_name="Sprint Planning")
-        filename = f"sprint_planning_{selected_sprint_num}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
-        
-        st.download_button(
-            label=f"📥 Export to Excel ({len(export_df)} tasks)",
-            data=excel_data,
-            file_name=filename,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            help="Export current filtered view to Excel"
-        )
-    
-    with col_export2:
-        st.caption("💡 Apply filters in sidebar to narrow down data before exporting.")
-    
-    st.divider()
-    
-    # Capacity Summary Section
-    st.markdown("### 📊 Capacity Summary by Person")
-    st.caption("**Limits:** Mandatory ≤ 48 hrs (60%), Stretch ≤ 16 hrs (20%), Total = 80 hrs")
-    
-    # Calculate capacity from edited data (to show live updates)
-    capacity_summary = task_store.get_capacity_summary(edited_df)
-    
-    if not capacity_summary.empty:
-        # Display as a styled table
-        for idx, row in capacity_summary.iterrows():
-            col_name, col_none, col_mand, col_stretch, col_total = st.columns([2, 1.5, 2, 2, 2])
-            
-            with col_name:
-                st.write(f"**{row['AssignedTo']}**")
-            
-            with col_none:
-                none_hrs = row.get('NoneHours', 0)
-                st.write(f"⚪ None: **{none_hrs:.1f}** hrs")
-            
-            with col_mand:
-                mand_hrs = row['MandatoryHours']
-                mand_limit = row['MandatoryLimit']
-                mand_color = "🔴" if row['MandatoryOver'] else "🟢"
-                st.write(f"{mand_color} Mandatory: **{mand_hrs:.1f}** / {mand_limit} hrs")
-            
-            with col_stretch:
-                stretch_hrs = row['StretchHours']
-                stretch_limit = row['StretchLimit']
-                stretch_color = "🔴" if row['StretchOver'] else "🟢"
-                st.write(f"{stretch_color} Stretch: **{stretch_hrs:.1f}** / {stretch_limit} hrs")
-            
-            with col_total:
-                total_hrs = row['TotalHours']
-                total_limit = row['TotalLimit']
-                total_color = "🔴" if row['TotalOver'] else "🟢"
-                st.write(f"{total_color} Total: **{total_hrs:.1f}** / {total_limit} hrs")
-    else:
-        st.info("No tasks with estimated hours yet.")
-    
-    st.divider()
-    
-    # Save button
-    col1, col2, col3 = st.columns([1, 2, 1])
-    
-    with col1:
-        if st.button("💾 Save Changes", type="primary", use_container_width=True):
+    with col_save1:
+        if st.button("💾 Save Changes", type="primary", use_container_width=True, key="save_btn_top"):
             editable_fields = ['CustomerPriority', 'FinalPriority', 'HoursEstimated', 
                              'GoalType', 'DependencyOn', 'DependenciesLead', 'DependencySecured', 'Comments']
             sprint_changes = 0
@@ -591,10 +518,10 @@ if not filtered_tasks.empty:
             elif errors:
                 st.error(f"❌ Errors: {', '.join(errors[:3])}")
     
-    with col2:
+    with col_save2:
         st.caption("Changes are only saved when you click 'Save Changes'")
     
-    with col3:
+    with col_save3:
         # Export button
         from utils.exporters import export_to_excel
         excel_data = export_to_excel(edited_df)
@@ -605,6 +532,73 @@ if not filtered_tasks.empty:
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
+    
+    st.divider()
+    
+    # Export section - exports current filtered view
+    col_export1, col_export2 = st.columns([2, 6])
+    
+    with col_export1:
+        # Export current filtered view
+        export_df = edited_df.copy()
+        # Remove internal columns from export
+        export_cols = [c for c in export_df.columns if not c.startswith('_')]
+        export_df = export_df[export_cols]
+        
+        excel_data = export_to_excel(export_df, sheet_name="Sprint Planning")
+        filename = f"sprint_planning_{selected_sprint_num}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+        
+        st.download_button(
+            label=f"📥 Export to Excel ({len(export_df)} tasks)",
+            data=excel_data,
+            file_name=filename,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            help="Export current filtered view to Excel"
+        )
+    
+    with col_export2:
+        st.caption("💡 Apply filters in sidebar to narrow down data before exporting.")
+    
+    st.divider()
+    
+    # Capacity Summary Section
+    st.markdown("### 📊 Capacity Summary by Person")
+    st.caption("**Limits:** Mandatory ≤ 48 hrs (60%), Stretch ≤ 16 hrs (20%), Total = 80 hrs")
+    
+    # Calculate capacity from edited data (to show live updates)
+    capacity_summary = task_store.get_capacity_summary(edited_df)
+    
+    if not capacity_summary.empty:
+        # Display as a styled table
+        for idx, row in capacity_summary.iterrows():
+            col_name, col_none, col_mand, col_stretch, col_total = st.columns([2, 1.5, 2, 2, 2])
+            
+            with col_name:
+                st.write(f"**{row['AssignedTo']}**")
+            
+            with col_none:
+                none_hrs = row.get('NoneHours', 0)
+                st.write(f"⚪ None: **{none_hrs:.1f}** hrs")
+            
+            with col_mand:
+                mand_hrs = row['MandatoryHours']
+                mand_limit = row['MandatoryLimit']
+                mand_color = "🔴" if row['MandatoryOver'] else "🟢"
+                st.write(f"{mand_color} Mandatory: **{mand_hrs:.1f}** / {mand_limit} hrs")
+            
+            with col_stretch:
+                stretch_hrs = row['StretchHours']
+                stretch_limit = row['StretchLimit']
+                stretch_color = "🔴" if row['StretchOver'] else "🟢"
+                st.write(f"{stretch_color} Stretch: **{stretch_hrs:.1f}** / {stretch_limit} hrs")
+            
+            with col_total:
+                total_hrs = row['TotalHours']
+                total_limit = row['TotalLimit']
+                total_color = "🔴" if row['TotalOver'] else "🟢"
+                st.write(f"{total_color} Total: **{total_hrs:.1f}** / {total_limit} hrs")
+    else:
+        st.info("No tasks with estimated hours yet.")
     
     # Capacity breakdown
     st.divider()

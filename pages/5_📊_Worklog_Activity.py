@@ -17,15 +17,9 @@ from components.auth import require_admin, display_user_info
 from utils.grid_styles import apply_grid_styles, get_custom_css
 from utils.exporters import export_to_excel, export_to_csv
 
-st.set_page_config(
-    page_title="Worklog Activity",
-    page_icon="📊",
-    layout="wide"
-)
-
 apply_grid_styles()
 
-st.title("📊 Worklog Activity Report")
+st.title("📊 Worklog Activity")
 st.caption("_Team member activity tracking based on iTrack worklog data — PBIDS Team_")
 
 # Require admin access
@@ -49,7 +43,7 @@ if all_worklogs.empty:
     2. Upload the iTrack **Worklog export** CSV file
     3. Return here to view activity reports
     """)
-    st.page_link("pages/2_📤_Upload_Tasks.py", label="📤 Upload Worklog Data", icon="📤")
+    st.page_link("pages/7_📤_Upload_Tasks.py", label="📤 Upload Worklog Data", icon="📤")
     st.stop()
 
 # Summary stats

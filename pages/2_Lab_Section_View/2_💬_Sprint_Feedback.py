@@ -10,12 +10,6 @@ from modules.sprint_calendar import get_sprint_calendar
 from components.auth import require_auth, display_user_info, get_user_role, get_user_section, is_section_manager
 from utils.grid_styles import apply_grid_styles
 
-st.set_page_config(
-    page_title="Sprint Feedback (Prototype)",
-    page_icon="💬",
-    layout="wide"
-)
-
 # Apply styles
 apply_grid_styles()
 

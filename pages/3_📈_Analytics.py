@@ -17,13 +17,7 @@ from components.metrics_dashboard import (
 )
 from utils.exporters import generate_sprint_summary, format_summary_report
 
-st.set_page_config(
-    page_title="Analytics",
-    page_icon="📈",
-    layout="wide"
-)
-
-st.title("📈 Sprint Analytics")
+st.title("📈 Analytics")
 
 # Require authentication
 require_auth("Analytics")
@@ -243,14 +237,14 @@ with tab2:
         ir_data = pd.DataFrame({
             'Metric': ['Total', 'At Risk', 'Exceeded TAT', 'Compliance'],
             'Value': [
-                tat_metrics['ir_tasks'],
-                tat_metrics['ir_at_risk'],
-                tat_metrics['ir_exceeded_tat'],
+                str(tat_metrics['ir_tasks']),
+                str(tat_metrics['ir_at_risk']),
+                str(tat_metrics['ir_exceeded_tat']),
                 f"{tat_metrics['ir_compliance_rate']:.1f}%"
             ]
         })
         
-        st.dataframe(ir_data, width="stretch", hide_index=True)
+        st.dataframe(ir_data, use_container_width=True, hide_index=True)
         
         if tat_metrics['ir_exceeded_tat'] > 0:
             st.error(f"⚠️ {tat_metrics['ir_exceeded_tat']} IR tasks exceeded 0.8 day TAT")
@@ -263,14 +257,14 @@ with tab2:
         sr_data = pd.DataFrame({
             'Metric': ['Total', 'At Risk', 'Exceeded TAT', 'Compliance'],
             'Value': [
-                tat_metrics['sr_tasks'],
-                tat_metrics['sr_at_risk'],
-                tat_metrics['sr_exceeded_tat'],
+                str(tat_metrics['sr_tasks']),
+                str(tat_metrics['sr_at_risk']),
+                str(tat_metrics['sr_exceeded_tat']),
                 f"{tat_metrics['sr_compliance_rate']:.1f}%"
             ]
         })
         
-        st.dataframe(sr_data, width="stretch", hide_index=True)
+        st.dataframe(sr_data, use_container_width=True, hide_index=True)
         
         if tat_metrics['sr_exceeded_tat'] > 0:
             st.error(f"⚠️ {tat_metrics['sr_exceeded_tat']} SR tasks exceeded 22 day TAT")
@@ -417,19 +411,19 @@ with tab4:
             'Average Days Open'
         ],
         'Value': [
-            summary['total_tasks'],
-            summary['completed_tasks'],
+            str(summary['total_tasks']),
+            str(summary['completed_tasks']),
             f"{summary['completion_rate']:.1f}%",
-            summary['priority_5_count'],
-            summary['at_risk_count'],
-            summary['ir_count'],
-            summary['sr_count'],
+            str(summary['priority_5_count']),
+            str(summary['at_risk_count']),
+            str(summary['ir_count']),
+            str(summary['sr_count']),
             f"{summary['total_estimated_hours']:.1f}",
             f"{summary['avg_days_open']:.1f}"
         ]
     })
     
-    st.dataframe(stats_df, width="stretch", hide_index=True)
+    st.dataframe(stats_df, use_container_width=True, hide_index=True)
 
 # Export options at bottom
 st.divider()

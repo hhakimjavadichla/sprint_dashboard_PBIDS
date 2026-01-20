@@ -16,13 +16,7 @@ from utils.constants import VALID_SECTIONS
 # Path to itrack mapping config
 ITRACK_MAPPING_PATH = Path(__file__).parent.parent / '.streamlit' / 'itrack_mapping.toml'
 
-st.set_page_config(
-    page_title="Admin Configuration",
-    page_icon="⚙️",
-    layout="wide"
-)
-
-st.title("⚙️ Admin Configuration")
+st.title("⚙️ Admin Config")
 st.caption("_Configure sprint calendar and user accounts — PBIDS Team_")
 
 # Require admin access

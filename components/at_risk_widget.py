@@ -123,14 +123,14 @@ def display_tat_breakdown(sprint_df: pd.DataFrame):
         ir_data = {
             'Metric': ['Total Tasks', 'At Risk', 'Exceeded TAT', 'Compliance Rate'],
             'Value': [
-                tat_metrics['ir_tasks'],
-                tat_metrics['ir_at_risk'],
-                tat_metrics['ir_exceeded_tat'],
+                str(tat_metrics['ir_tasks']),
+                str(tat_metrics['ir_at_risk']),
+                str(tat_metrics['ir_exceeded_tat']),
                 f"{tat_metrics['ir_compliance_rate']:.1f}%"
             ]
         }
         
-        st.dataframe(pd.DataFrame(ir_data), width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame(ir_data), use_container_width=True, hide_index=True)
         
         if tat_metrics['ir_exceeded_tat'] > 0:
             st.error(f"⚠️ {tat_metrics['ir_exceeded_tat']} IR tasks exceeded 0.8 day TAT")
@@ -141,14 +141,14 @@ def display_tat_breakdown(sprint_df: pd.DataFrame):
         sr_data = {
             'Metric': ['Total Tasks', 'At Risk', 'Exceeded TAT', 'Compliance Rate'],
             'Value': [
-                tat_metrics['sr_tasks'],
-                tat_metrics['sr_at_risk'],
-                tat_metrics['sr_exceeded_tat'],
+                str(tat_metrics['sr_tasks']),
+                str(tat_metrics['sr_at_risk']),
+                str(tat_metrics['sr_exceeded_tat']),
                 f"{tat_metrics['sr_compliance_rate']:.1f}%"
             ]
         }
         
-        st.dataframe(pd.DataFrame(sr_data), width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame(sr_data), use_container_width=True, hide_index=True)
         
         if tat_metrics['sr_exceeded_tat'] > 0:
             st.error(f"⚠️ {tat_metrics['sr_exceeded_tat']} SR tasks exceeded 22 day TAT")
