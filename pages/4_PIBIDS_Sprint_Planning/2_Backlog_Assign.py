@@ -9,7 +9,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 from datetime import datetime
 from modules.task_store import get_task_store
 from modules.sprint_calendar import get_sprint_calendar
-from modules.section_filter import exclude_forever_tickets
+from modules.section_filter import exclude_forever_tickets, exclude_ad_tickets
 from components.auth import require_admin, display_user_info
 from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, COLUMN_DESCRIPTIONS, display_column_help, get_backlog_column_order, clean_subject_column
 from utils.exporters import export_to_excel
@@ -25,7 +25,7 @@ if not require_admin():
 # Display user info
 display_user_info()
 
-st.title("📋 Backlog Assign")
+st.title("Backlog Assign")
 
 # Get task store and sprint calendar
 task_store = get_task_store()
@@ -52,16 +52,32 @@ with st.expander("ℹ️ How to Use This Page", expanded=False):
     - Completed tasks are automatically moved to the **Completed Tasks** page
     """)
 
-# Summary metrics by ticket type (reusable component)
-display_ticket_task_metrics(backlog_tasks)
-
 # Forever ticket filter
-exclude_forever = st.checkbox(
-    "Exclude Forever Tickets",
-    value=False,
-    help="Hide Standing Meetings and Miscellaneous Meetings tasks",
-    key="exclude_forever_backlog"
-)
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    exclude_forever = st.checkbox(
+        "Exclude Forever Tickets",
+        value=False,
+        help="Hide Standing Meetings and Miscellaneous Meetings tasks",
+        key="exclude_forever_backlog"
+    )
+with col2:
+    exclude_ad = st.checkbox(
+        "Exclude AD Tickets",
+        value=False,
+        help="Hide Admin Request (AD) tickets",
+        key="exclude_ad_backlog"
+    )
+
+# Apply filters for metrics display
+metrics_tasks = backlog_tasks.copy()
+if exclude_forever:
+    metrics_tasks = exclude_forever_tickets(metrics_tasks)
+if exclude_ad:
+    metrics_tasks = exclude_ad_tickets(metrics_tasks)
+
+# Summary metrics by ticket type (reusable component) - use filtered data
+display_ticket_task_metrics(metrics_tasks)
 
 st.divider()
 
@@ -79,6 +95,10 @@ else:
     # Apply forever ticket filter
     if exclude_forever:
         display_tasks = exclude_forever_tickets(display_tasks)
+    
+    # Apply AD ticket filter
+    if exclude_ad:
+        display_tasks = exclude_ad_tickets(display_tasks)
     
     assignee_col = 'AssignedTo_Display' if 'AssignedTo_Display' in backlog_tasks.columns else 'AssignedTo'
     
@@ -123,7 +143,7 @@ else:
     
     
     # Sprint assignment section
-    st.markdown("### 📤 Assign Tasks to Sprint")
+    st.markdown("### Assign Tasks to Sprint")
     
     # Sprint selector - only current and future sprints
     if not future_sprints.empty:
@@ -183,8 +203,16 @@ else:
             # Clean up 'nan' strings
             grid_df[col] = grid_df[col].replace('nan', '')
     
+    # Convert priority columns to string for dropdown compatibility
+    for priority_col in ['CustomerPriority', 'FinalPriority']:
+        if priority_col in grid_df.columns:
+            grid_df[priority_col] = grid_df[priority_col].apply(
+                lambda x: '' if pd.isna(x) else str(int(x)) if isinstance(x, (int, float)) else str(x)
+            )
+    
     # Define dropdown values for editable columns
-    PRIORITY_VALUES = ['', 0, 1, 2, 3, 4, 5]
+    # Use strings for all values to avoid ag-Grid type coercion issues
+    PRIORITY_VALUES = ['', '0', '1', '2', '3', '4', '5']
     DEPENDENCY_VALUES = ['', 'Yes', 'No']
     DEPENDENCY_SECURED_VALUES = ['', 'Yes', 'Pending', 'No']
     GOAL_TYPE_VALUES = ['', 'Mandatory', 'Stretch']
@@ -227,13 +255,13 @@ else:
                         headerTooltip=COLUMN_DESCRIPTIONS.get('CustomerName', ''))
     gb.configure_column('TaskNum', header_name='TaskNum', width=COLUMN_WIDTHS['TaskNum'],
                         headerTooltip=COLUMN_DESCRIPTIONS.get('TaskNum', ''))
-    gb.configure_column('Status', header_name='Status', width=COLUMN_WIDTHS['Status'],
+    gb.configure_column('TaskStatus', header_name='TaskStatus', width=COLUMN_WIDTHS.get('TaskStatus', 100),
                         headerTooltip=COLUMN_DESCRIPTIONS.get('Status', ''), )
     gb.configure_column('TicketStatus', header_name='TicketStatus', width=COLUMN_WIDTHS.get('TicketStatus', 100),
                         headerTooltip=COLUMN_DESCRIPTIONS.get('TicketStatus', ''))
     gb.configure_column('AssignedTo', header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'],
                         headerTooltip=COLUMN_DESCRIPTIONS.get('AssignedTo', ''))
-    gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS['Subject'],
+    gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS.get('Subject', 200),
                         headerTooltip=COLUMN_DESCRIPTIONS.get('Subject', ''), tooltipField='Subject')
     gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=COLUMN_WIDTHS['TicketCreatedDt'],
                         headerTooltip=COLUMN_DESCRIPTIONS.get('TicketCreatedDt', ''))
@@ -338,7 +366,7 @@ else:
             # Show selected tasks summary
             with st.expander(f"📋 View Selected Tasks ({num_selected})", expanded=False):
                 for idx, row in selected_df.iterrows():
-                    st.write(f"• **{row.get('TaskNum', 'N/A')}** | {row.get('Status', 'N/A')} | {row.get('AssignedTo', 'N/A')} | {str(row.get('Subject', ''))[:50]}...")
+                    st.write(f"• **{row.get('TaskNum', 'N/A')}** | {row.get('TaskStatus', 'N/A')} | {row.get('AssignedTo', 'N/A')} | {str(row.get('Subject', ''))[:50]}...")
             
             # Assign button
             if target_sprint is not None:
@@ -368,7 +396,7 @@ else:
                 st.warning("Please select a target sprint to assign tasks.")
     
     # Save Changes button for editable fields
-    st.markdown("#### 💾 Save Edits")
+    st.markdown("#### Save Edits")
     col_save1, col_save2 = st.columns([2, 6])
     
     with col_save1:

@@ -15,6 +15,7 @@ from typing import Optional, Tuple, Dict, List
 from modules.sprint_calendar import get_sprint_calendar
 from modules.section_filter import filter_by_team_members
 from utils.name_mapper import apply_name_mapping
+from modules.sqlite_store import is_sqlite_enabled, load_worklogs, save_worklogs
 
 # Default storage path
 DEFAULT_WORKLOG_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'worklog_data.csv')
@@ -51,9 +52,12 @@ class WorklogStore:
     def __init__(self, store_path: str = None, use_snowflake: bool = None):
         self.store_path = store_path or DEFAULT_WORKLOG_PATH
         self.calendar = get_sprint_calendar()
+        self.use_sqlite = is_sqlite_enabled()
         
         # Determine data source mode
-        if use_snowflake is None:
+        if self.use_sqlite:
+            self.use_snowflake = False
+        elif use_snowflake is None:
             # Auto-detect: use Snowflake if explicitly enabled in config
             from modules.snowflake_connector import is_snowflake_enabled
             self.use_snowflake = is_snowflake_enabled()
@@ -64,10 +68,21 @@ class WorklogStore:
     
     def _load_store(self) -> pd.DataFrame:
         """Load worklog data from store (CSV or Snowflake mode)"""
+        if self.use_sqlite:
+            return self._load_from_sqlite()
         if self.use_snowflake:
             return self._load_from_snowflake()
         else:
             return self._load_from_csv()
+
+    def _load_from_sqlite(self) -> pd.DataFrame:
+        """Load worklog data from SQLite."""
+        df = load_worklogs()
+        if df.empty:
+            return df
+        if 'LogDate' in df.columns:
+            df['LogDate'] = pd.to_datetime(df['LogDate'], errors='coerce')
+        return df
     
     def _load_from_snowflake(self) -> pd.DataFrame:
         """Load worklog data from Snowflake"""
@@ -117,6 +132,8 @@ class WorklogStore:
     
     def save(self) -> bool:
         """Save worklog data to CSV"""
+        if self.use_sqlite:
+            return save_worklogs(None, self.worklog_df)
         try:
             os.makedirs(os.path.dirname(self.store_path), exist_ok=True)
             self.worklog_df.to_csv(self.store_path, index=False)
@@ -353,7 +370,7 @@ class WorklogStore:
         
         if not tasks_df.empty:
             # Select only the columns we need from tasks
-            task_cols = ['TaskNum', 'TicketType', 'Section', 'CustomerName', 'Subject', 'Status', 'AssignedTo']
+            task_cols = ['TaskNum', 'TicketType', 'Section', 'CustomerName', 'Subject', 'TaskStatus', 'AssignedTo', 'SprintsAssigned']
             available_cols = [col for col in task_cols if col in tasks_df.columns]
             tasks_subset = tasks_df[available_cols].drop_duplicates(subset=['TaskNum'])
             

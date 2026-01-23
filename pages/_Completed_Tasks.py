@@ -16,8 +16,8 @@ from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STY
 # Apply custom tooltip styles
 apply_grid_styles()
 
-st.title("✅ Completed Tasks")
-st.caption("_Historical view of all completed tasks — PBIDS Team_")
+st.title("Completed Tasks")
+st.caption("_Historical view of all completed tasks — PIBIDS Team_")
 
 # Require admin access
 require_admin("Completed Tasks")
@@ -35,17 +35,17 @@ current_sprint_num = current_sprint['SprintNumber'] if current_sprint else 999
 all_tasks = task_store.get_all_tasks()
 
 if all_tasks.empty:
-    st.info("📭 No tasks found in the system")
+    st.info("No tasks found in the system")
     st.write("Upload tasks first to view completed tasks.")
-    st.page_link("pages/2_📤_Upload_Tasks.py", label="📤 Upload Tasks", icon="📤")
+    st.page_link("pages/7_Data_Source.py", label="Upload Tasks")
     st.stop()
 
 # Filter to completed tasks only
 completed_statuses = ['Completed', 'Closed', 'Resolved']
-completed_tasks = all_tasks[all_tasks['Status'].isin(completed_statuses)].copy()
+completed_tasks = all_tasks[all_tasks['TaskStatus'].isin(completed_statuses)].copy()
 
 if completed_tasks.empty:
-    st.info("📭 No completed tasks found")
+    st.info("No completed tasks found")
     st.write("Completed tasks will appear here as they are finished.")
     st.stop()
 
@@ -171,7 +171,7 @@ with tab1:
     # Display columns
     display_cols = [
         'CompletedInSprint', 'TicketNum', 'TaskCount', '_TicketGroup', '_IsMultiTask',
-        'TicketType', 'Section', 'TaskNum', 'Status', 'AssignedTo', 
+        'TicketType', 'Section', 'TaskNum', 'TaskStatus', 'AssignedTo', 
         'CustomerName', 'Subject', 'HoursEstimated', 'DaysOpen'
     ]
     
@@ -190,10 +190,10 @@ with tab1:
     gb.configure_column('TicketType', header_name='Type', width=COLUMN_WIDTHS['TicketType'])
     gb.configure_column('Section', width=COLUMN_WIDTHS['Section'])
     gb.configure_column('TaskNum', header_name='Task #', width=COLUMN_WIDTHS['TaskNum'])
-    gb.configure_column('Status', width=COLUMN_WIDTHS['Status'])
+    gb.configure_column('TaskStatus', width=COLUMN_WIDTHS.get('TaskStatus', 100))
     gb.configure_column('AssignedTo', header_name='Assignee', width=COLUMN_WIDTHS['AssignedTo'])
     gb.configure_column('CustomerName', header_name='Customer', width=COLUMN_WIDTHS['CustomerName'])
-    gb.configure_column('Subject', width=COLUMN_WIDTHS['Subject'], tooltipField='Subject')
+    gb.configure_column('Subject', width=COLUMN_WIDTHS.get('Subject', 200), tooltipField='Subject')
     gb.configure_column('HoursEstimated', header_name='Est. Hours', width=COLUMN_WIDTHS['HoursEstimated'])
     gb.configure_column('DaysOpen', header_name='Days Open', width=COLUMN_WIDTHS['DaysOpen'])
     
@@ -343,7 +343,7 @@ with tab2:
             
             display_cols = [
                 'TicketNum', 'TicketType', 'Section', 'TaskNum', 
-                'Status', 'AssignedTo', 'Subject', 'HoursEstimated', 'DaysOpen'
+                'TaskStatus', 'AssignedTo', 'Subject', 'HoursEstimated', 'DaysOpen'
             ]
             
             available_cols = [col for col in display_cols if col in sprint_completed.columns]
@@ -355,9 +355,9 @@ with tab2:
             gb.configure_column('TicketType', header_name='Type', width=COLUMN_WIDTHS['TicketType'])
             gb.configure_column('Section', width=COLUMN_WIDTHS['Section'])
             gb.configure_column('TaskNum', header_name='Task #', width=COLUMN_WIDTHS['TaskNum'])
-            gb.configure_column('Status', width=COLUMN_WIDTHS['Status'])
+            gb.configure_column('TaskStatus', width=COLUMN_WIDTHS.get('TaskStatus', 100))
             gb.configure_column('AssignedTo', header_name='Assignee', width=COLUMN_WIDTHS['AssignedTo'])
-            gb.configure_column('Subject', width=COLUMN_WIDTHS['Subject'], tooltipField='Subject')
+            gb.configure_column('Subject', width=COLUMN_WIDTHS.get('Subject', 200), tooltipField='Subject')
             gb.configure_column('HoursEstimated', header_name='Est. Hours', width=COLUMN_WIDTHS['HoursEstimated'])
             gb.configure_column('DaysOpen', header_name='Days Open', width=COLUMN_WIDTHS['DaysOpen'])
             gb.configure_pagination(enabled=False)
@@ -408,7 +408,7 @@ with tab3:
         trends_df = pd.DataFrame(trends_data)
         
         # Completion volume trend
-        st.subheader("📈 Completion Volume Trend")
+        st.subheader("Completion Volume Trend")
         
         fig = px.bar(
             trends_df,
@@ -426,7 +426,7 @@ with tab3:
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("📋 Task Type Distribution")
+            st.subheader("Task Type Distribution")
             
             fig = go.Figure()
             fig.add_trace(go.Scatter(
@@ -454,7 +454,7 @@ with tab3:
             st.plotly_chart(fig, use_container_width=True)
         
         with col2:
-            st.subheader("⏱️ Effort Trend")
+            st.subheader("Effort Trend")
             
             fig = px.bar(
                 trends_df,
@@ -468,7 +468,7 @@ with tab3:
         st.divider()
         
         # Average days open trend
-        st.subheader("📅 Average Resolution Time")
+        st.subheader("Average Resolution Time")
         
         fig = px.line(
             trends_df,
@@ -483,11 +483,11 @@ with tab3:
         st.divider()
         
         # Summary table
-        st.subheader("📊 Sprint Completion Summary")
+        st.subheader("Sprint Completion Summary")
         st.dataframe(trends_df, use_container_width=True, hide_index=True)
 
 with tab4:
-    st.subheader("🔍 Search Completed Tasks")
+    st.subheader("Search Completed Tasks")
     
     # Search options
     col1, col2 = st.columns([2, 1])
@@ -574,7 +574,7 @@ with tab4:
         
         display_cols = [
             'CompletedInSprint', 'TicketNum', 'TicketType', 'Section', 'TaskNum',
-            'Status', 'AssignedTo', 'Subject', 'HoursEstimated', 'DaysOpen'
+            'TaskStatus', 'AssignedTo', 'Subject', 'HoursEstimated', 'DaysOpen'
         ]
         
         available_cols = [col for col in display_cols if col in search_results.columns]
@@ -587,9 +587,9 @@ with tab4:
         gb.configure_column('TicketType', header_name='Type', width=COLUMN_WIDTHS['TicketType'])
         gb.configure_column('Section', width=COLUMN_WIDTHS['Section'])
         gb.configure_column('TaskNum', header_name='Task #', width=COLUMN_WIDTHS['TaskNum'])
-        gb.configure_column('Status', width=COLUMN_WIDTHS['Status'])
+        gb.configure_column('TaskStatus', width=COLUMN_WIDTHS.get('TaskStatus', 100))
         gb.configure_column('AssignedTo', header_name='Assignee', width=COLUMN_WIDTHS['AssignedTo'])
-        gb.configure_column('Subject', width=COLUMN_WIDTHS['Subject'], tooltipField='Subject')
+        gb.configure_column('Subject', width=COLUMN_WIDTHS.get('Subject', 200), tooltipField='Subject')
         gb.configure_column('HoursEstimated', header_name='Est. Hours', width=COLUMN_WIDTHS['HoursEstimated'])
         gb.configure_column('DaysOpen', header_name='Days Open', width=COLUMN_WIDTHS['DaysOpen'])
         gb.configure_pagination(enabled=False)

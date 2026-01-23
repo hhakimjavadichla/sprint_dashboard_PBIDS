@@ -18,8 +18,8 @@ from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STY
 # Apply custom tooltip styles
 apply_grid_styles()
 
-st.title("📋 Sprint Prioritization")
-st.caption("_Prototype — PBIDS Team_")
+st.title("Sprint Prioritization")
+st.caption("_Prototype — PIBIDS Team_")
 
 # Require authentication
 require_auth("Section View")
@@ -46,11 +46,11 @@ user_sections = []
 if user_section_raw:
     user_sections = [s.strip() for s in user_section_raw.split(',') if s.strip()]
 
-# For admins and PBIDS Users, allow section selection (view all sections)
+# For admins and PIBIDS Users, allow section selection (view all sections)
 if is_admin() or is_pbids_user():
-    role_label = "Admin" if is_admin() else "PBIDS User"
+    role_label = "Admin" if is_admin() else "PIBIDS User"
     edit_note = "" if is_admin() else " (Read-only)"
-    st.info(f"👑 **{role_label} View{edit_note}**: Select a section to view or see all sections")
+    st.info(f"**{role_label} View{edit_note}**: Select a section to view or see all sections")
     
     sections = sorted(sprint_df['Section'].dropna().unique().tolist())
     selected_section = st.selectbox(
@@ -191,7 +191,8 @@ if not filtered_df.empty:
     sv_assignee_col = 'AssignedTo_Display' if 'AssignedTo_Display' in filtered_df.columns else 'AssignedTo'
     
     # Priority dropdown values: blank=not set yet, 0=No longer needed, 1=Lowest to 5=Highest
-    PRIORITY_VALUES = ['', 0, 1, 2, 3, 4, 5]
+    # Use strings for all values to avoid ag-Grid type coercion issues
+    PRIORITY_VALUES = ['', '0', '1', '2', '3', '4', '5']
     
     # Use standardized column order from config (backlog order - no sprint detail columns)
     display_order = get_backlog_column_order(sv_assignee_col)
@@ -202,8 +203,16 @@ if not filtered_df.empty:
     # Clean subject column (remove LAB-XX: NNNNNN - prefix)
     display_df = clean_subject_column(display_df)
     
+    # Convert priority columns to string for dropdown compatibility
+    if 'CustomerPriority' in display_df.columns:
+        display_df['CustomerPriority'] = display_df['CustomerPriority'].apply(
+            lambda x: '' if pd.isna(x) else str(int(x)) if isinstance(x, (int, float)) else str(x)
+        )
+    
     # Mark which rows are editable (open tasks only)
-    display_df['_is_open'] = ~display_df['Status'].isin(CLOSED_STATUSES)
+    # Handle both old 'Status' and new 'TaskStatus' column names for backward compatibility
+    status_col = 'TaskStatus' if 'TaskStatus' in display_df.columns else 'Status'
+    display_df['_is_open'] = ~display_df[status_col].isin(CLOSED_STATUSES) if status_col in display_df.columns else True
     
     # Configure AgGrid with built-in column filtering (click column header menu)
     gb = GridOptionsBuilder.from_dataframe(display_df)
@@ -229,16 +238,16 @@ if not filtered_df.empty:
     gb.configure_column('Section', header_name='Section', width=COLUMN_WIDTHS.get('Section', 100))
     gb.configure_column('CustomerName', header_name='CustomerName', width=COLUMN_WIDTHS.get('CustomerName', 120))
     gb.configure_column('TaskNum', header_name='TaskNum', width=COLUMN_WIDTHS['TaskNum'])
-    gb.configure_column('Status', header_name='Status', width=COLUMN_WIDTHS['Status'])
+    gb.configure_column('TaskStatus', header_name='TaskStatus', width=COLUMN_WIDTHS.get('TaskStatus', 100))
     gb.configure_column('TicketStatus', header_name='TicketStatus', width=COLUMN_WIDTHS.get('TicketStatus', 100))
     gb.configure_column(sv_assignee_col, header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'])
-    gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS['Subject'], 
+    gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS.get('Subject', 200), 
                         tooltipField='Subject')
     gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=COLUMN_WIDTHS.get('TicketCreatedDt', 110))
     gb.configure_column('TaskCreatedDt', header_name='TaskCreatedDt', width=COLUMN_WIDTHS.get('TaskCreatedDt', 110))
     gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'])
     
-    # Priority is editable ONLY for open tasks AND only for users who can edit (not PBIDS Users)
+    # Priority is editable ONLY for open tasks AND only for users who can edit (not PIBIDS Users)
     user_can_edit = can_edit_section()
     if user_can_edit:
         priority_editable = JsCode("""
@@ -251,7 +260,7 @@ if not filtered_df.empty:
                             cellEditor='agSelectCellEditor',
                             cellEditorParams={'values': PRIORITY_VALUES})
     else:
-        # Read-only for PBIDS Users
+        # Read-only for PIBIDS Users
         gb.configure_column('CustomerPriority', header_name='CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'])
     gb.configure_column('FinalPriority', header_name='FinalPriority', width=COLUMN_WIDTHS.get('FinalPriority', 100))
     gb.configure_column('GoalType', header_name='GoalType', width=COLUMN_WIDTHS.get('GoalType', 90))
@@ -277,7 +286,7 @@ if not filtered_df.empty:
                             cellEditorPopup=True,
                             cellEditorParams={'maxLength': 2000, 'rows': 5, 'cols': 50})
     else:
-        # Read-only for PBIDS Users
+        # Read-only for PIBIDS Users
         gb.configure_column('DependencyOn', header_name='Dependency', width=COLUMN_WIDTHS.get('DependencyOn', 110))
         gb.configure_column('DependenciesLead', header_name='DependencyLead(s)', width=COLUMN_WIDTHS.get('DependenciesLead', 120),
                             tooltipField='DependenciesLead')
@@ -355,7 +364,7 @@ if not filtered_df.empty:
         with col_info:
             st.caption("Editable fields: CustomerPriority, Dependency, DependencyLead(s), Comments. Only open tasks can be edited.")
     else:
-        st.caption("🔒 **Read-only view** - PBIDS Users cannot edit task data.")
+        st.caption("🔒 **Read-only view** - PIBIDS Users cannot edit task data.")
     
     # Export section - exports current filtered view
     col_export1, col_export2 = st.columns([2, 6])
@@ -394,15 +403,16 @@ st.divider()
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("📊 Status Breakdown")
-    status_counts = filtered_df['Status'].value_counts()
+    st.subheader("Status Breakdown")
+    status_col = 'TaskStatus' if 'TaskStatus' in filtered_df.columns else 'Status'
+    status_counts = filtered_df[status_col].value_counts() if status_col in filtered_df.columns else pd.Series()
     
     for status, count in status_counts.items():
         percentage = (count / len(filtered_df) * 100) if len(filtered_df) > 0 else 0
         st.write(f"**{status}**: {count} ({percentage:.0f}%)")
 
 with col2:
-    st.subheader("🎯 Priority Breakdown")
+    st.subheader("Priority Breakdown")
     priority_counts = filtered_df['CustomerPriority'].dropna().value_counts().sort_index(ascending=False)
     
     priority_labels = {
@@ -431,7 +441,7 @@ if len(at_risk_df) > 0:
     
     # Use display names if available
     ar_assignee_col = 'AssignedTo_Display' if 'AssignedTo_Display' in at_risk_df.columns else 'AssignedTo'
-    ar_cols = ['TaskNum', 'Subject', 'DaysOpen', 'TicketType', 'Status', ar_assignee_col]
+    ar_cols = ['TaskNum', 'Subject', 'DaysOpen', 'TicketType', 'TaskStatus', ar_assignee_col]
     ar_cols = [c for c in ar_cols if c in at_risk_df.columns]
     at_risk_display = at_risk_df[ar_cols].copy()
     

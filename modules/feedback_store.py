@@ -6,6 +6,7 @@ import os
 import pandas as pd
 from datetime import datetime
 from typing import Optional, Tuple, List, Dict
+from modules.sqlite_store import is_sqlite_enabled, load_feedback, save_feedback
 
 # Default storage path
 DEFAULT_FEEDBACK_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'sprint_feedback.csv')
@@ -28,10 +29,13 @@ class FeedbackStore:
     
     def __init__(self, store_path: str = None):
         self.store_path = store_path or DEFAULT_FEEDBACK_PATH
+        self.use_sqlite = is_sqlite_enabled()
         self.feedback_df = self._load_store()
     
     def _load_store(self) -> pd.DataFrame:
-        """Load feedback from CSV"""
+        """Load feedback from CSV or SQLite"""
+        if self.use_sqlite:
+            return self._load_from_sqlite()
         if not os.path.exists(self.store_path):
             # Create empty DataFrame if no file exists
             df = pd.DataFrame(columns=FEEDBACK_COLUMNS)
@@ -60,8 +64,18 @@ class FeedbackStore:
             return False
     
     def save(self) -> bool:
-        """Save current state to CSV"""
+        """Save current state to CSV or SQLite"""
+        if self.use_sqlite:
+            return save_feedback(None, self.feedback_df)
         return self._save_df(self.feedback_df)
+
+    def _load_from_sqlite(self) -> pd.DataFrame:
+        """Load feedback from SQLite."""
+        df = load_feedback()
+        for col in FEEDBACK_COLUMNS:
+            if col not in df.columns:
+                df[col] = ''
+        return df
     
     def reload(self):
         """Reload data from disk"""

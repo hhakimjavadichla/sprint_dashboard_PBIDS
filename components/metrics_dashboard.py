@@ -41,8 +41,8 @@ def display_sprint_overview(sprint_df: pd.DataFrame):
     
     # Calculate metrics
     total_tasks = len(sprint_df)
-    completed = len(sprint_df[sprint_df['Status'] == 'Completed'])
-    in_progress = len(sprint_df[sprint_df['Status'] == 'In Progress'])
+    completed = len(sprint_df[sprint_df['TaskStatus'] == 'Completed'])
+    in_progress = len(sprint_df[sprint_df['TaskStatus'].isin(['Accepted', 'Assigned', 'Waiting'])])
     
     # At risk
     at_risk = len(sprint_df[
@@ -129,7 +129,7 @@ def display_ticket_task_metrics(df: pd.DataFrame, exclude_forever_internally: bo
         'SR': 'SR (Service Request)',
         'PR': 'PR (Project Request)',
         'IR': 'IR (Incident Request)',
-        'NC': 'NC (Non-classified IS Requests)',
+        'NC': 'NC – Non-classified or IS Requests',
         'AD': 'AD (Admin Request)'
     }
     
@@ -294,7 +294,7 @@ def display_status_breakdown(sprint_df: pd.DataFrame):
 
     sprint_df = exclude_forever_tickets(sprint_df)
 
-    status_counts = sprint_df['Status'].value_counts()
+    status_counts = sprint_df['TaskStatus'].value_counts()
     
     # Horizontal bar chart
     import plotly.express as px

@@ -18,6 +18,7 @@ import pandas as pd
 from datetime import datetime
 from typing import Optional, List, Dict, Tuple
 from modules.sprint_calendar import get_sprint_calendar
+from modules.sqlite_store import is_sqlite_enabled, load_task_view, save_tasks
 from utils.name_mapper import apply_name_mapping, get_display_name
 from modules.section_filter import filter_by_team_members
 from utils.constants import IMPORT_THRESHOLD_DATE, OPEN_TASK_STATUSES, CLOSED_TASK_STATUSES
@@ -74,10 +75,10 @@ VALID_STATUSES = [
 ITRACK_OWNED_FIELDS = [
     'TaskNum',              # Task identifier (primary key)
     'TicketNum',            # Parent ticket ID
-    'Status',               # Task status from iTrack
+    'TaskStatus',           # Task status from iTrack
     'TicketStatus',         # Ticket status from iTrack
     'AssignedTo',           # Current assignee
-    'Subject',              # Ticket subject line
+    'Subject',              # Task subject line
     'Section',              # Team/section
     'CustomerName',         # Customer name
     'TaskAssignedDt',       # When task was assigned
@@ -147,19 +148,24 @@ class TaskStore:
         self.store_path = store_path or ALL_TASKS_PATH
         self.annotations_path = DASHBOARD_ANNOTATIONS_PATH
         self.calendar = get_sprint_calendar()
-        
+        self.use_sqlite = is_sqlite_enabled()
+
         # Determine data source mode
-        if use_snowflake is None:
+        if self.use_sqlite:
+            self.use_snowflake = False
+        elif use_snowflake is None:
             # Auto-detect: use Snowflake if explicitly enabled in config
             from modules.snowflake_connector import is_snowflake_enabled
             self.use_snowflake = is_snowflake_enabled()
         else:
             self.use_snowflake = use_snowflake
-        
+
         self.tasks_df = self._load_store()
     
     def _load_store(self) -> pd.DataFrame:
         """Load all tasks from store (CSV or Snowflake mode)"""
+        if self.use_sqlite:
+            return self._load_from_sqlite()
         if self.use_snowflake:
             return self._load_from_snowflake()
         else:
@@ -223,6 +229,47 @@ class TaskStore:
         
         print(f"TaskStore: Loaded {len(df)} tasks from Snowflake")
         return df
+
+    def _load_from_sqlite(self) -> pd.DataFrame:
+        """Load tasks from SQLite compatibility view."""
+        df = load_task_view()
+        if df.empty:
+            return df
+
+        df = self._ensure_dashboard_fields(df)
+
+        date_cols = [
+            'TaskAssignedDt', 'StatusUpdateDt', 'TicketCreatedDt',
+            'TaskCreatedDt', 'TaskResolvedDt', 'TicketResolvedDt',
+            'SprintStartDt', 'SprintEndDt'
+        ]
+        for col in date_cols:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+
+        if 'TicketType' not in df.columns or df['TicketType'].isna().all():
+            df['TicketType'] = df['Subject'].apply(self._extract_ticket_type)
+
+        if 'SprintNumber' in df.columns:
+            sprint_df = self.calendar.get_all_sprints()
+            if not sprint_df.empty:
+                sprint_df = sprint_df.copy()
+                sprint_df['SprintNumber'] = pd.to_numeric(
+                    sprint_df['SprintNumber'], errors='coerce'
+                )
+                sprint_df = sprint_df.dropna(subset=['SprintNumber'])
+                sprint_df['SprintNumber'] = sprint_df['SprintNumber'].astype(int)
+
+                sprint_map = sprint_df.set_index('SprintNumber')
+                sprint_nums = pd.to_numeric(df['SprintNumber'], errors='coerce')
+                df['SprintName'] = sprint_nums.map(sprint_map['SprintName'])
+                df['SprintStartDt'] = sprint_nums.map(sprint_map['SprintStartDt'])
+                df['SprintEndDt'] = sprint_nums.map(sprint_map['SprintEndDt'])
+
+        # Apply date filter for display: only show open tickets + tickets after threshold date
+        df = self._apply_date_filter(df)
+        
+        return df
     
     def _extract_ticket_type(self, subject: str) -> str:
         """Extract ticket type from subject line (same as CSV import)"""
@@ -249,7 +296,7 @@ class TaskStore:
         column_mapping = {
             'TASKNUM': 'TaskNum',
             'TICKETNUM': 'TicketNum',
-            'STATUS': 'Status',
+            'STATUS': 'TaskStatus',
             'TICKETSTATUS': 'TicketStatus',
             'ASSIGNEDTO': 'AssignedTo',
             'SUBJECT': 'Subject',
@@ -285,7 +332,7 @@ class TaskStore:
         
         def should_keep(row):
             task_created = row.get('TaskCreatedDt')
-            status = str(row.get('Status', '')).strip()
+            status = str(row.get('TaskStatus', '')).strip()
             
             if pd.isna(task_created):
                 return True
@@ -417,6 +464,8 @@ class TaskStore:
     
     def save(self) -> bool:
         """Save task store (mode-dependent)"""
+        if self.use_sqlite:
+            return save_tasks(None, self.tasks_df)
         if self.use_snowflake:
             return self._save_annotations()
         else:
@@ -598,7 +647,7 @@ class TaskStore:
         def should_import_task(row):
             """Check if task should be imported based on date and status"""
             task_created = row.get('TaskCreatedDt')
-            status = str(row.get('Status', '')).strip()
+            status = str(row.get('TaskStatus', '')).strip()
             
             # If no creation date, import the task (safe default)
             if pd.isna(task_created):
@@ -700,7 +749,7 @@ class TaskStore:
                 # NO AUTO-ASSIGNMENT: All new tasks go to backlog, sprints assigned via Work Backlogs
                 new_task['SprintsAssigned'] = ''
                 
-                status = row.get('Status', '')
+                status = row.get('TaskStatus', '')
                 if status in CLOSED_STATUSES:
                     resolved_dt = row.get('TaskResolvedDt') or row.get('TicketResolvedDt')
                     new_task['StatusUpdateDt'] = resolved_dt if pd.notna(resolved_dt) else datetime.now()
@@ -800,7 +849,11 @@ class TaskStore:
         return result
     
     def _calculate_days_open(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Calculate DaysOpen for all tasks based on Task Assigned Date"""
+        """Calculate DaysOpen for all tasks based on Task Assigned Date.
+        
+        Uses TaskAssignedDt as primary, falls back to TaskCreatedDt if not available.
+        DaysOpen is clamped to minimum 0 to handle timezone differences.
+        """
         if df.empty:
             return df
         
@@ -809,12 +862,12 @@ class TaskStore:
         if 'TaskAssignedDt' in df.columns:
             df['TaskAssignedDt'] = pd.to_datetime(df['TaskAssignedDt'], errors='coerce')
             df['DaysOpen'] = df['TaskAssignedDt'].apply(
-                lambda x: (today - x).days if pd.notna(x) else 0
+                lambda x: max(0, (today - x).days) if pd.notna(x) else 0
             )
-        elif 'TicketCreatedDt' in df.columns:
-            df['TicketCreatedDt'] = pd.to_datetime(df['TicketCreatedDt'], errors='coerce')
-            df['DaysOpen'] = df['TicketCreatedDt'].apply(
-                lambda x: (today - x).days if pd.notna(x) else 0
+        elif 'TaskCreatedDt' in df.columns:
+            df['TaskCreatedDt'] = pd.to_datetime(df['TaskCreatedDt'], errors='coerce')
+            df['DaysOpen'] = df['TaskCreatedDt'].apply(
+                lambda x: max(0, (today - x).days) if pd.notna(x) else 0
             )
         else:
             df['DaysOpen'] = 0
@@ -919,7 +972,7 @@ class TaskStore:
         
         # Get all OPEN tasks (not completed)
         backlog_tasks = self.tasks_df[
-            ~self.tasks_df['Status'].isin(CLOSED_STATUSES)
+            ~self.tasks_df['TaskStatus'].isin(CLOSED_STATUSES)
         ].copy()
         
         if not backlog_tasks.empty:
@@ -1182,7 +1235,7 @@ class TaskStore:
         def should_keep_task(row):
             """Check if task should be kept based on date and status"""
             task_created = row.get('TaskCreatedDt')
-            status = str(row.get('Status', '')).strip()
+            status = str(row.get('TaskStatus', '')).strip()
             
             # If no creation date, keep the task (safe default)
             if pd.isna(task_created):
@@ -1202,7 +1255,7 @@ class TaskStore:
         # Track what we're removing
         for idx, row in self.tasks_df.iterrows():
             if not should_keep_task(row):
-                status = str(row.get('Status', 'Unknown'))
+                status = str(row.get('TaskStatus', 'Unknown'))
                 stats['removed_by_status'][status] = stats['removed_by_status'].get(status, 0) + 1
         
         # Apply filter

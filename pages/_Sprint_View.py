@@ -17,7 +17,7 @@ from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STY
 apply_grid_styles()
 
 st.title("Sprint View")
-st.caption("_Prototype — PBIDS Team_")
+st.caption("_Prototype — PIBIDS Team_")
 
 # Display user info
 display_user_info()
@@ -29,9 +29,9 @@ calendar = get_sprint_calendar()
 # Check if we have tasks
 all_tasks = task_store.get_all_tasks()
 if all_tasks.empty:
-    st.warning("📭 No tasks in the system yet.")
+    st.warning("No tasks in the system yet.")
     st.info("Upload tasks first to view sprints.")
-    st.page_link("pages/2_📤_Upload_Tasks.py", label="📤 Upload Tasks", icon="📤")
+    st.page_link("pages/7_Data_Source.py", label="Upload Tasks")
     st.stop()
 
 # Get current sprint
@@ -109,7 +109,7 @@ with col3:
     st.metric("Original", original_count, help="Tasks assigned to this sprint")
 
 with col4:
-    open_count = len(sprint_tasks[~sprint_tasks['Status'].isin(CLOSED_STATUSES)]) if 'Status' in sprint_tasks.columns else len(sprint_tasks)
+    open_count = len(sprint_tasks[~sprint_tasks['TaskStatus'].isin(CLOSED_STATUSES)]) if 'TaskStatus' in sprint_tasks.columns else len(sprint_tasks)
     st.metric("Open", open_count)
 
 with col5:
@@ -160,10 +160,10 @@ with tab1:
     gb.configure_column('Section', header_name='Section', width=COLUMN_WIDTHS.get('Section', 100))
     gb.configure_column('CustomerName', header_name='CustomerName', width=COLUMN_WIDTHS.get('CustomerName', 120))
     gb.configure_column('TaskNum', header_name='TaskNum', width=COLUMN_WIDTHS['TaskNum'])
-    gb.configure_column('Status', header_name='Status', width=COLUMN_WIDTHS['Status'])
+    gb.configure_column('TaskStatus', header_name='TaskStatus', width=COLUMN_WIDTHS.get('TaskStatus', 100))
     gb.configure_column('TicketStatus', header_name='TicketStatus', width=COLUMN_WIDTHS.get('TicketStatus', 100))
     gb.configure_column(tab1_assignee_col, header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'])
-    gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS['Subject'], tooltipField='Subject')
+    gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS.get('Subject', 200), tooltipField='Subject')
     gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=COLUMN_WIDTHS.get('TicketCreatedDt', 110))
     gb.configure_column('TaskCreatedDt', header_name='TaskCreatedDt', width=COLUMN_WIDTHS.get('TaskCreatedDt', 110))
     gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'])
@@ -212,7 +212,7 @@ with tab1:
         )
 
 with tab2:
-    st.subheader("✏️ Update Task Status")
+    st.subheader("Update Task Status")
     
     # Admin only
     if not is_admin():
@@ -230,7 +230,7 @@ with tab2:
         """)
         
         # Only show open tasks for updating
-        open_tasks = sprint_tasks[~sprint_tasks['Status'].isin(CLOSED_STATUSES)].copy()
+        open_tasks = sprint_tasks[~sprint_tasks['TaskStatus'].isin(CLOSED_STATUSES)].copy()
         
         if open_tasks.empty:
             st.success("✅ All tasks in this sprint are already closed.")
@@ -262,7 +262,7 @@ with tab2:
                 assignee_col = 'AssignedTo_Display' if 'AssignedTo_Display' in display_df.columns else 'AssignedTo'
                 
                 # Columns to display in grid
-                grid_cols = ['SprintTaskId', 'Status', assignee_col, 'Section', 'TicketType', 
+                grid_cols = ['SprintTaskId', 'TaskStatus', assignee_col, 'Section', 'TicketType', 
                             'AssignedDate', 'DaysOpen', 'Subject', 'TaskNum']
                 available_grid_cols = [c for c in grid_cols if c in display_df.columns]
                 grid_df = display_df[available_grid_cols].copy()
@@ -276,19 +276,19 @@ with tab2:
                     header_checkbox=True
                 )
                 gb.configure_column('SprintTaskId', header_name='SprintTaskId', width=COLUMN_WIDTHS.get('SprintTaskId', 120), pinned='left')
-                gb.configure_column('Status', header_name='Status', width=COLUMN_WIDTHS['Status'])
+                gb.configure_column('TaskStatus', header_name='TaskStatus', width=COLUMN_WIDTHS.get('TaskStatus', 100))
                 gb.configure_column(assignee_col, header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'])
                 gb.configure_column('Section', header_name='Section', width=COLUMN_WIDTHS['Section'])
                 gb.configure_column('TicketType', header_name='TicketType', width=COLUMN_WIDTHS['TicketType'])
                 gb.configure_column('AssignedDate', header_name='AssignedDate', width=COLUMN_WIDTHS.get('AssignedDate', 115))
                 gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'])
-                gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS['Subject'], tooltipField='Subject')
+                gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS.get('Subject', 200), tooltipField='Subject')
                 gb.configure_column('TaskNum', hide=True)  # Hidden but needed for reference
                 
                 grid_options = gb.build()
                 grid_options['enableBrowserTooltips'] = False  # Disable browser tooltips to avoid double tooltip
                 
-                st.markdown("#### 📋 Select Tasks to Update")
+                st.markdown("#### Select Tasks to Update")
                 st.caption("Click checkbox to select tasks. Use header checkbox to select all.")
                 
                 grid_response = AgGrid(
@@ -321,7 +321,7 @@ with tab2:
                     # Show selected tasks summary
                     with st.expander(f"📋 View Selected Tasks ({num_selected})", expanded=False):
                         for idx, row in selected_df.iterrows():
-                            st.write(f"• **{row.get('SprintTaskId', 'N/A')}** | {row.get('Status', 'N/A')} | {row.get('AssignedTo', 'N/A')} | {str(row.get('Subject', ''))[:50]}")
+                            st.write(f"• **{row.get('SprintTaskId', 'N/A')}** | {row.get('TaskStatus', 'N/A')} | {row.get('AssignedTo', 'N/A')} | {str(row.get('Subject', ''))[:50]}")
                     
                     # Get earliest task assigned date from selected tasks
                     selected_task_nums = [str(t) for t in selected_df['TaskNum'].tolist()]
@@ -341,7 +341,7 @@ with tab2:
                     else:
                         earliest_date = date(2025, 1, 1)
                     
-                    st.markdown("#### ✏️ Update Status")
+                    st.markdown("#### Update Status")
                     
                     form_col1, form_col2 = st.columns(2)
                     
@@ -433,15 +433,15 @@ with tab2:
                             st.rerun()
 
 with tab3:
-    st.subheader("📊 Task Distribution")
+    st.subheader("Task Distribution")
     
     # By status
-    if 'Status' in sprint_tasks.columns:
+    if 'TaskStatus' in sprint_tasks.columns:
         st.markdown("**Tasks by Status:**")
         
-        status_counts = sprint_tasks['Status'].value_counts().reset_index()
-        status_counts.columns = ['Status', 'Count']
-        status_counts['Type'] = status_counts['Status'].apply(
+        status_counts = sprint_tasks['TaskStatus'].value_counts().reset_index()
+        status_counts.columns = ['TaskStatus', 'Count']
+        status_counts['Type'] = status_counts['TaskStatus'].apply(
             lambda x: '🔴 Closed' if x in CLOSED_STATUSES else '🟢 Open'
         )
         
@@ -457,7 +457,7 @@ with tab3:
         
         assignee_counts = sprint_tasks.groupby('AssignedTo').agg({
             'TaskNum': 'count',
-            'Status': lambda x: sum(x.isin(CLOSED_STATUSES))
+            'TaskStatus': lambda x: sum(x.isin(CLOSED_STATUSES))
         }).reset_index()
         assignee_counts.columns = ['Assignee', 'Total', 'Closed']
         assignee_counts['Open'] = assignee_counts['Total'] - assignee_counts['Closed']

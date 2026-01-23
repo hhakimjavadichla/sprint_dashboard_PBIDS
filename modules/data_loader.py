@@ -138,10 +138,10 @@ class DataLoader:
             df = self._parse_sprint_dates(df)
             
             # Filter out completed tasks unless explicitly requested
-            if not include_completed and 'Status' in df.columns:
+            if not include_completed and 'TaskStatus' in df.columns:
                 # Exclude tasks with status 'Completed' or 'Closed'
                 completed_statuses = ['Completed', 'Closed', 'Done', 'Resolved']
-                df = df[~df['Status'].isin(completed_statuses)]
+                df = df[~df['TaskStatus'].isin(completed_statuses)]
                 
                 # If all tasks were completed, return None
                 if df.empty:

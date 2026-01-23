@@ -3,14 +3,38 @@ Snowflake Connector Module
 Handles connection to Snowflake database for reading iTrack task data.
 
 Configuration is stored in .streamlit/secrets.toml under [snowflake] section.
+Column mappings are stored in .streamlit/itrack_mapping.toml.
 """
 import streamlit as st
 import pandas as pd
 from datetime import datetime
 from typing import Optional, Tuple, Dict
+from pathlib import Path
 import logging
+import toml
 
 logger = logging.getLogger(__name__)
+
+# Path to config file
+CONFIG_FILE = Path(__file__).parent.parent / ".streamlit" / "itrack_mapping.toml"
+
+
+def load_snowflake_column_mappings() -> Tuple[Dict[str, str], Dict[str, str]]:
+    """
+    Load Snowflake column mappings from config file.
+    
+    Returns:
+        Tuple of (task_mapping, worklog_mapping) dictionaries
+        Each maps SNOWFLAKE_COLUMN -> AppColumnName
+    """
+    try:
+        config = toml.load(CONFIG_FILE)
+        task_mapping = config.get("snowflake_task_mapping", {})
+        worklog_mapping = config.get("snowflake_worklog_mapping", {})
+        return task_mapping, worklog_mapping
+    except Exception as e:
+        logger.error(f"Error loading Snowflake column mappings: {e}")
+        return {}, {}
 
 # Cache TTL: None = no auto-refresh (on-demand only)
 # Set to a number (e.g., 3600) for automatic refresh every N seconds
@@ -149,21 +173,20 @@ def test_snowflake_connection() -> Tuple[bool, str]:
 
 
 # =============================================================================
-# TABLE NAMES (from the three iTrack views)
+# TABLE NAMES (from the iTrack views)
 # =============================================================================
 TASK_TABLE = "DS_VW_ITRACK_LPM_TASK"
-INCIDENT_TABLE = "DS_VW_ITRACK_LPM_INCIDENT"
+INCIDENT_VIEW = "DS_VW_ITRACK_PLMGETINCIDENT"  # Pre-joined task+incident view
 WORKLOG_TABLE = "DS_VW_ITRACK_LPM_WORKLOG"
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
 def fetch_tasks_from_snowflake(_timestamp: str = None) -> Tuple[pd.DataFrame, bool, str]:
     """
-    Fetch tasks from Snowflake by joining Task and Incident tables.
+    Fetch tasks from Snowflake for LAB PATH INFORMATICS team.
     
-    Joins:
-    - DS_VW_ITRACK_LPM_TASK (primary)
-    - DS_VW_ITRACK_LPM_INCIDENT (LEFT JOIN for ticket-level data)
+    Only imports INCIDENT tickets (not Service Requests).
+    Tasks are filtered by OWNERTEAM = 'LAB PATH INFORMATICS'.
     
     The _timestamp parameter is used to invalidate cache on manual refresh.
     
@@ -181,12 +204,14 @@ def fetch_tasks_from_snowflake(_timestamp: str = None) -> Tuple[pd.DataFrame, bo
         config = get_snowflake_config()
         schema = f"{config['database']}.{config['schema']}"
         
-        # Query joining Task and Incident tables
+        # Join Task table with Incident view for ticket details
+        # Only tasks owned by LAB PATH INFORMATICS are imported
+        # TicketType is extracted from Subject by _extract_ticket_type() in sqlite_store.py
         query = f"""
         SELECT 
             t.ASSIGNMENTID as TaskNum,
             t.PARENTOBJECTDISPLAYID as TicketNum,
-            t.STATUS as Status,
+            t.STATUS as TaskStatus,
             t.SUBJECT as Subject,
             t.OWNER as AssignedTo,
             t.OWNERTEAM as TaskOwnerTeam,
@@ -194,38 +219,34 @@ def fetch_tasks_from_snowflake(_timestamp: str = None) -> Tuple[pd.DataFrame, bo
             t.CREATEDDATETIME as TaskCreatedDt,
             t.RESOLVEDDATETIME as TaskResolvedDt,
             t.ACTUALEFFORT as TaskMinutesSpent,
-            i.STATUS as TicketStatus,
-            i.PROFILEFULLNAME as CustomerName,
-            i.CREATEDDATETIME as TicketCreatedDt,
-            i.RESOLVEDDATETIME as TicketResolvedDt,
-            i.TOTALTIMESPENT as TicketTotalTimeSpent
+            inc.TICKETSTATUS as TicketStatus,
+            inc.CUSTNAME as CustomerName,
+            inc.SECTION as Section,
+            inc.TICKETOWNERTEAM as TicketOwnerTeam,
+            inc.CREATEDBY as TicketCreatedBy,
+            inc.TICKETCREATEDDATETIME as TicketCreatedDt,
+            inc.TICKETRESOLVEDDATETIME as TicketResolvedDt,
+            inc.TOTALTIMESPENTONTICKET as TicketTotalTimeSpent
         FROM {schema}.{TASK_TABLE} t
-        LEFT JOIN {schema}.{INCIDENT_TABLE} i
-            ON t.PARENTOBJECTDISPLAYID = i.INCIDENTNUMBER
+        LEFT JOIN {schema}.{INCIDENT_VIEW} inc
+            ON t.ASSIGNMENTID = inc.ASSIGNMENTID
         WHERE t.OWNERTEAM = 'LAB PATH INFORMATICS'
         """
         
         df = pd.read_sql(query, conn)
         conn.close()
         
-        # Snowflake returns uppercase column names, rename to match dashboard schema
-        column_rename = {
-            'TASKNUM': 'TaskNum',
-            'TICKETNUM': 'TicketNum',
-            'STATUS': 'Status',
-            'SUBJECT': 'Subject',
-            'ASSIGNEDTO': 'AssignedTo',
-            'TASKOWNERTEAM': 'TaskOwnerTeam',
-            'TASKASSIGNEDDT': 'TaskAssignedDt',
-            'TASKCREATEDDT': 'TaskCreatedDt',
-            'TASKRESOLVEDDT': 'TaskResolvedDt',
-            'TASKMINUTESSPENT': 'TaskMinutesSpent',
-            'TICKETSTATUS': 'TicketStatus',
-            'CUSTOMERNAME': 'CustomerName',
-            'TICKETCREATEDDT': 'TicketCreatedDt',
-            'TICKETRESOLVEDDT': 'TicketResolvedDt',
-            'TICKETTOTALTIMESPENT': 'TicketTotalTimeSpent',
-        }
+        # Load column mappings from config file
+        task_mapping, _ = load_snowflake_column_mappings()
+        
+        # Snowflake returns uppercase column names
+        # The config maps uppercase column names to app schema names
+        column_rename = {}
+        for col in df.columns:
+            col_upper = col.upper()
+            if col_upper in task_mapping:
+                column_rename[col] = task_mapping[col_upper]
+        
         df = df.rename(columns=column_rename)
         
         # Convert column types
@@ -292,16 +313,17 @@ def fetch_worklogs_from_snowflake(_timestamp: str = None) -> Tuple[pd.DataFrame,
         df = pd.read_sql(query, conn)
         conn.close()
         
-        # Snowflake returns uppercase column names, rename to match dashboard schema
-        column_rename = {
-            'RECORDID': 'RecordId',
-            'TASKNUM': 'TaskNum',
-            'OWNER': 'Owner',
-            'DESCRIPTION': 'Description',
-            'LOGDATE': 'LogDate',
-            'MINUTESSPENT': 'MinutesSpent',
-            'SHORTDESCRIPTION': 'ShortDescription',
-        }
+        # Load column mappings from config file
+        _, worklog_mapping = load_snowflake_column_mappings()
+        
+        # Snowflake returns uppercase column names
+        # The config maps source Snowflake columns to app columns
+        column_rename = {}
+        for col in df.columns:
+            col_upper = col.upper()
+            if col_upper in worklog_mapping:
+                column_rename[col] = worklog_mapping[col_upper]
+        
         df = df.rename(columns=column_rename)
         
         # Convert column types
@@ -353,19 +375,26 @@ def refresh_snowflake_data(previous_df: pd.DataFrame = None) -> Tuple[pd.DataFra
         'total_after': 0,
         'new_tasks': 0,
         'removed_tasks': 0,
+        'updated_tasks': 0,
+        'unchanged_tasks': 0,
         'status_changed': 0,
+        'new_tasks_by_status': {},
+        'task_status_changes': [],
     }
     
+    # Build lookup from previous data
+    previous_tasks = set()
+    previous_data = {}
     if previous_df is not None and not previous_df.empty and 'TaskNum' in previous_df.columns:
         change_summary['total_before'] = len(previous_df)
-        previous_tasks = set(previous_df['TaskNum'].astype(str).unique())
-        previous_status = dict(zip(
-            previous_df['TaskNum'].astype(str), 
-            previous_df['Status'].astype(str) if 'Status' in previous_df.columns else [''] * len(previous_df)
-        ))
-    else:
-        previous_tasks = set()
-        previous_status = {}
+        for _, row in previous_df.iterrows():
+            task_num = str(row['TaskNum'])
+            previous_tasks.add(task_num)
+            previous_data[task_num] = {
+                'TaskStatus': str(row.get('TaskStatus', '')),
+                'AssignedTo': str(row.get('AssignedTo', '')),
+                'Subject': str(row.get('Subject', ''))[:100],  # Truncate for comparison
+            }
     
     clear_snowflake_cache()
     # Use current timestamp to bust cache
@@ -380,20 +409,105 @@ def refresh_snowflake_data(previous_df: pd.DataFrame = None) -> Tuple[pd.DataFra
             current_tasks = set(df['TaskNum'].astype(str).unique())
             
             # Calculate changes
-            new_tasks = current_tasks - previous_tasks
-            removed_tasks = previous_tasks - current_tasks
+            new_task_nums = current_tasks - previous_tasks
+            removed_task_nums = previous_tasks - current_tasks
+            existing_task_nums = current_tasks & previous_tasks
             
-            change_summary['new_tasks'] = len(new_tasks)
-            change_summary['removed_tasks'] = len(removed_tasks)
+            change_summary['new_tasks'] = len(new_task_nums)
+            change_summary['removed_tasks'] = len(removed_task_nums)
             
-            # Check for status changes on existing tasks
-            if 'Status' in df.columns and previous_status:
-                current_status = dict(zip(df['TaskNum'].astype(str), df['Status'].astype(str)))
-                status_changed = 0
-                for task_num in (current_tasks & previous_tasks):
-                    if current_status.get(task_num) != previous_status.get(task_num):
-                        status_changed += 1
-                change_summary['status_changed'] = status_changed
+            # Track new tasks by status
+            new_by_status = {}
+            for _, row in df.iterrows():
+                task_num = str(row['TaskNum'])
+                if task_num in new_task_nums:
+                    status = str(row.get('TaskStatus', 'Unknown'))
+                    new_by_status[status] = new_by_status.get(status, 0) + 1
+            change_summary['new_tasks_by_status'] = new_by_status
+            
+            # Check for changes on existing tasks
+            updated_count = 0
+            unchanged_count = 0
+            status_changes = []
+            
+            for _, row in df.iterrows():
+                task_num = str(row['TaskNum'])
+                if task_num in existing_task_nums:
+                    prev = previous_data.get(task_num, {})
+                    curr_status = str(row.get('TaskStatus', ''))
+                    curr_assigned = str(row.get('AssignedTo', ''))
+                    curr_subject = str(row.get('Subject', ''))[:100]
+                    
+                    has_changes = False
+                    
+                    # Check status change
+                    if prev.get('TaskStatus', '') != curr_status:
+                        status_changes.append({
+                            'task_num': task_num,
+                            'old_status': prev.get('TaskStatus', ''),
+                            'new_status': curr_status
+                        })
+                        has_changes = True
+                    
+                    # Check other field changes
+                    if prev.get('AssignedTo', '') != curr_assigned:
+                        has_changes = True
+                    if prev.get('Subject', '') != curr_subject:
+                        has_changes = True
+                    
+                    if has_changes:
+                        updated_count += 1
+                    else:
+                        unchanged_count += 1
+            
+            change_summary['updated_tasks'] = updated_count
+            change_summary['unchanged_tasks'] = unchanged_count
+            change_summary['status_changed'] = len(status_changes)
+            change_summary['task_status_changes'] = status_changes
+    
+    return df, success, message, change_summary
+
+
+def refresh_snowflake_worklogs(previous_df: pd.DataFrame = None) -> Tuple[pd.DataFrame, bool, str, Dict]:
+    """
+    Force refresh worklog data from Snowflake by clearing cache and fetching fresh data.
+    Compares with previous data to show what changed.
+    
+    Args:
+        previous_df: Previous worklog DataFrame to compare against (optional)
+    
+    Returns:
+        Tuple of (DataFrame, success: bool, message: str, change_summary: Dict)
+    """
+    change_summary = {
+        'total_before': 0,
+        'total_after': 0,
+        'new_worklogs': 0,
+        'removed_worklogs': 0,
+    }
+    
+    # Build lookup from previous data
+    previous_records = set()
+    if previous_df is not None and not previous_df.empty and 'RecordId' in previous_df.columns:
+        change_summary['total_before'] = len(previous_df)
+        previous_records = set(previous_df['RecordId'].astype(str).unique())
+    
+    # Clear cache and fetch fresh data
+    fetch_worklogs_from_snowflake.clear()
+    timestamp = datetime.now().isoformat()
+    df, success, message = fetch_worklogs_from_snowflake(_timestamp=timestamp)
+    
+    if success:
+        if not df.empty and 'RecordId' in df.columns:
+            change_summary['total_after'] = len(df)
+            current_records = set(df['RecordId'].astype(str).unique())
+            
+            # Calculate changes
+            new_records = current_records - previous_records
+            removed_records = previous_records - current_records
+            
+            change_summary['new_worklogs'] = len(new_records)
+            change_summary['removed_worklogs'] = len(removed_records)
     
     return df, success, message, change_summary
 

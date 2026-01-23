@@ -13,7 +13,7 @@ The PBIDS Sprint Dashboard is a web-based application for managing sprint workfl
 - **Framework**: Streamlit (Python web framework)
 - **Data Tables**: st-aggrid (AgGrid component for Streamlit)
 - **Charts**: Plotly Express
-- **Data Storage**: CSV files (local file system)
+- **Data Storage**: CSV files (default) or SQLite database (optional)
 - **Configuration**: TOML files
 - **Authentication**: Streamlit secrets-based authentication
 
@@ -162,7 +162,7 @@ Tasks are imported from iTrack extract files (CSV format) using the **Field Owne
 - **New tasks**: Initialized with default values for dashboard fields
 - Tasks are automatically assigned an **Original Sprint Number** based on TaskAssignedDt
 - **Open tasks** go to the Work Backlogs (no sprint assignment)
-- **Completed/Closed tasks** are auto-assigned to their original sprint
+- **Completed/Closed tasks** are assigned to their original sprint
 
 **Import Report:**
 After import, a detailed report shows:
@@ -177,8 +177,10 @@ All open tasks appear in the Work Backlogs regardless of sprint assignment. This
 - Filter by days open, ticket age, section, status, and assignee
 - Select tasks for sprint assignment
 
-### 4.3 Sprint Assignment (v1.2)
+### 4.3 Sprint Assignment (v1.3 - Manual Assignment Only)
 Administrators assign tasks from the Work Backlogs to **current or future sprints only** (past sprints are not available for assignment). A task can be assigned to **multiple sprints** (e.g., if work spans across sprints). The assignment is tracked as a comma-separated list of sprint numbers in the `SprintsAssigned` field.
+
+**Important:** There is **NO automatic carryover**. Tasks do NOT automatically move to the next sprint. Admin must explicitly assign each task to each sprint.
 
 **Assignment Process:**
 1. Select tasks using checkboxes in Work Backlogs
@@ -203,6 +205,8 @@ Administrators can remove tasks from sprints via the Sprint Planning page:
 
 ### 4.4 Sprint Planning
 The Sprint Planning page shows **only current and future sprints**. By default, a sprint has **no tasks** until the admin explicitly assigns them from Work Backlogs.
+
+**Note:** Since there is no automatic carryover, if a task is not completed in Sprint N and you want it in Sprint N+1, you must manually assign it to Sprint N+1 from Work Backlogs.
 
 Once tasks are assigned to a sprint, the Sprint Planning page allows:
 - Setting estimated hours for each task
@@ -872,22 +876,70 @@ All charts use Plotly Express:
 
 ## 10. Data Persistence
 
-### 10.1 Storage Format
+### 10.1 Storage Options
+
+The application supports two storage backends:
+
+| Mode | Enable | Data Location |
+|------|--------|---------------|
+| **CSV** (default) | Default behavior | `data/*.csv` files |
+| **SQLite** (optional) | `SPRINT_DASHBOARD_USE_SQLITE=true` | `data/sprint_dashboard.db` |
+
+### 10.2 CSV Storage (Default)
 - All task data stored in CSV format
 - Location: `data/` directory
 - Files:
   - `all_tasks.csv` - Main task data
   - `worklog_data.csv` - Worklog entries
   - `sprint_calendar.csv` - Sprint definitions
+  - `users.csv` - User accounts
+  - `team_offdays.csv` - Off day configurations
+  - `sprint_feedback.csv` - Sprint feedback
 
-### 10.2 Save Behavior
+### 10.3 SQLite Storage (Optional)
+Enable SQLite backend for improved data integrity and performance:
+
+```bash
+# Enable SQLite mode
+export SPRINT_DASHBOARD_USE_SQLITE=true
+
+# Optional: Custom database path
+export SPRINT_DASHBOARD_DB_PATH=/path/to/custom.db
+
+# Run the application
+streamlit run app.py
+```
+
+**SQLite Schema (Normalized):**
+- `tickets` - Parent ticket information
+- `tasks` - Individual task records
+- `dashboard_task_annotations` - Dashboard-owned fields (SprintsAssigned, Priority, etc.)
+- `task_sprint_assignments` - Sprint assignment join table
+- `worklogs` - Worklog entries
+- `users` - User accounts
+- `offdays` - Off day configurations
+- `feedback` - Sprint feedback
+- `sprint_calendar` - Sprint definitions
+- `task_flat_view` - Compatibility view for UI
+
+**Migration from CSV to SQLite:**
+```bash
+# Activate environment
+mamba activate itrack_sprint_dashboard
+
+# Run migration
+python -m modules.sqlite_migration --data-dir data/ --overwrite
+```
+
+### 10.4 Save Behavior
 - Changes save immediately on cell edit
 - Task assignments persist across sessions
 - Dashboard-only fields preserved during import
 - Import updates existing tasks (by TaskNum) without losing dashboard fields
 
-### 10.3 Backup Considerations
+### 10.5 Backup Considerations
 - CSV files should be backed up regularly
+- SQLite database file should be backed up regularly
 - Configuration files in `.streamlit/` should be version controlled
 - Secrets file should NOT be in version control
 
@@ -1007,4 +1059,4 @@ Key Python packages (from `requirements.txt`):
 
 ---
 
-*Document last updated: January 2026*
+*Document last updated: January 20, 2026 (v1.3)*

@@ -20,7 +20,7 @@ def get_user_role() -> Optional[str]:
     Get current user's role
     
     Returns:
-        User role ('Admin', 'PBIDS User', 'Section Manager', or 'Section User') or None
+        User role ('Admin', 'PIBIDS User', 'Section Manager', or 'Section User') or None
     """
     return st.session_state.get('user_role')
 
@@ -47,12 +47,12 @@ def is_admin() -> bool:
 
 def is_pbids_user() -> bool:
     """
-    Check if current user is a PBIDS User (read-only access)
+    Check if current user is a PIBIDS User (read-only access)
     
     Returns:
-        True if user is PBIDS User
+        True if user is PIBIDS User
     """
-    return get_user_role() == 'PBIDS User'
+    return get_user_role() == 'PIBIDS User'
 
 
 def is_section_manager() -> bool:
@@ -80,7 +80,7 @@ def can_edit_section() -> bool:
     Check if current user can edit section data (CustomerPriority, etc.)
     Section Managers and Section Users can edit their section data.
     Admins can edit all sections.
-    PBIDS Users cannot edit.
+    PIBIDS Users cannot edit.
     
     Returns:
         True if user can edit section data

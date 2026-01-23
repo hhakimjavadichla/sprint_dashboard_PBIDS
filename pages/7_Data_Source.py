@@ -16,6 +16,8 @@ from modules.snowflake_connector import (
     test_snowflake_connection,
     get_last_refresh_time,
     refresh_snowflake_data,
+    refresh_snowflake_worklogs,
+    fetch_worklogs_from_snowflake,
     CACHE_TTL_SECONDS,
     list_tables,
     describe_table,
@@ -26,7 +28,7 @@ from modules.snowflake_connector import (
 )
 from components.auth import require_admin, display_user_info
 
-st.title("📤 Data Source")
+st.title("Data Source")
 
 # Require admin access
 require_admin("Data Source")
@@ -41,11 +43,36 @@ calendar = get_sprint_calendar()
 snowflake_mode = is_snowflake_enabled()
 snowflake_configured = is_snowflake_configured()
 
+# Diagnostic info
+from modules.sqlite_store import is_sqlite_enabled, sync_from_snowflake
+sqlite_mode = is_sqlite_enabled()
+
+with st.expander("🔧 Data Source Diagnostics", expanded=False):
+    col_d1, col_d2, col_d3 = st.columns(3)
+    with col_d1:
+        st.write(f"**SQLite Enabled:** {is_sqlite_enabled()}")
+    with col_d2:
+        st.write(f"**Snowflake Enabled:** {snowflake_mode}")
+    with col_d3:
+        st.write(f"**Snowflake Configured:** {snowflake_configured}")
+    
+    st.write(f"**TaskStore Mode:** use_sqlite={task_store.use_sqlite}, use_snowflake={task_store.use_snowflake}")
+    st.write(f"**Total Tasks Loaded:** {len(task_store.tasks_df)}")
+    
+    # Show most recent tasks
+    if not task_store.tasks_df.empty and 'TaskCreatedDt' in task_store.tasks_df.columns:
+        import pandas as pd
+        df_diag = task_store.tasks_df.copy()
+        df_diag['TaskCreatedDt'] = pd.to_datetime(df_diag['TaskCreatedDt'], errors='coerce')
+        recent = df_diag.nlargest(3, 'TaskCreatedDt')[['TaskNum', 'TaskStatus', 'TaskCreatedDt']]
+        st.write("**Most Recent Tasks in Store:**")
+        st.dataframe(recent, hide_index=True)
+
 # =============================================================================
-# SNOWFLAKE MODE (when enabled = true in config)
+# SQLITE + SNOWFLAKE MODE (SQLite for storage, Snowflake for data source)
 # =============================================================================
-if snowflake_mode:
-    st.success("🔗 **Connected to Snowflake** - iTrack data is loaded automatically")
+if sqlite_mode and snowflake_configured:
+    st.success("**SQLite Mode with Snowflake Sync** - Data stored locally, synced from Snowflake")
     
     with st.expander("ℹ️ How It Works", expanded=False):
         st.markdown(f"""
@@ -64,13 +91,13 @@ if snowflake_mode:
     st.divider()
     
     # Connection Status
-    st.subheader("❄️ Snowflake Connection")
+    st.subheader("Snowflake Connection")
     
     col1, col2, col3 = st.columns([2, 1, 1])
     
     with col1:
         # Test connection button
-        if st.button("🔍 Test Connection"):
+        if st.button("Test Connection"):
             with st.spinner("Testing Snowflake connection..."):
                 success, message = test_snowflake_connection()
             if success:
@@ -79,35 +106,138 @@ if snowflake_mode:
                 st.error(f"❌ {message}")
     
     with col2:
-        # Refresh data button
-        if st.button("🔄 Refresh Data", type="primary"):
-            with st.spinner("Refreshing data from Snowflake..."):
-                # Get current data for comparison
-                previous_df = task_store.get_all_tasks() if task_store else None
+        # Sync from Snowflake button
+        if st.button("Sync from Snowflake", type="primary"):
+            with st.spinner("Syncing data from Snowflake to SQLite..."):
+                # Clear ALL caches aggressively
+                st.cache_data.clear()  # Clear all Streamlit data caches
+                from modules.section_filter import clear_team_cache
+                clear_team_cache()  # Clear LRU cache for team members
                 
-                df, success, message, changes = refresh_snowflake_data(previous_df)
-                if success:
-                    # Reset task store singleton to reload
+                # Sync from Snowflake to SQLite
+                sync_stats = sync_from_snowflake()
+                
+                if sync_stats['success']:
+                    # Reset stores to reload from SQLite
                     reset_task_store()
+                    reset_worklog_store()
                     
-                    # Build change summary message
-                    change_parts = []
-                    if changes['new_tasks'] > 0:
-                        change_parts.append(f"**+{changes['new_tasks']} new**")
-                    if changes['removed_tasks'] > 0:
-                        change_parts.append(f"**-{changes['removed_tasks']} removed**")
-                    if changes['status_changed'] > 0:
-                        change_parts.append(f"**{changes['status_changed']} status changed**")
+                    # Store stats in session state for display
+                    st.session_state['snowflake_sync_stats'] = sync_stats
+                    st.session_state['snowflake_refresh_success'] = True
                     
-                    if change_parts:
-                        change_msg = f" ({', '.join(change_parts)})"
-                    else:
-                        change_msg = " (no changes detected)"
-                    
-                    st.success(f"✅ {message}{change_msg}")
                     st.rerun()
                 else:
-                    st.error(f"❌ {message}")
+                    st.error(f"❌ {sync_stats['message']}")
+    
+    # Display sync statistics if available
+    if st.session_state.get('snowflake_refresh_success'):
+        sync_stats = st.session_state.get('snowflake_sync_stats', {})
+        
+        st.success(f"✅ {sync_stats.get('message', 'Data synced successfully!')}")
+        
+        # Task Statistics
+        st.subheader("📊 Task/Ticket Sync Statistics")
+        col_a, col_b, col_c, col_d = st.columns(4)
+        with col_a:
+            st.metric("Total Tasks", sync_stats.get('tasks_after', 0))
+        with col_b:
+            st.metric("New Tasks", sync_stats.get('new_tasks', 0), help="First time imported")
+        with col_c:
+            st.metric("Updated Tasks", sync_stats.get('updated_tasks', 0), help="Tasks with field changes")
+        with col_d:
+            st.metric("Unchanged", sync_stats.get('unchanged_tasks', 0), help="No changes detected")
+        
+        # Field-level task/ticket changes
+        with st.expander("📋 Task/Ticket Field Changes", expanded=True):
+            field_changes = [
+                ("Task Status", len(sync_stats.get('task_status_changes', []))),
+                ("Ticket Status", sync_stats.get('ticket_status_changed', 0)),
+                ("Task Owner", sync_stats.get('task_owner_changed', 0)),
+                ("Section", sync_stats.get('section_changed', 0)),
+                ("Ticket Type", sync_stats.get('ticket_type_changed', 0)),
+                ("Subject", sync_stats.get('subject_changed', 0)),
+                ("Task Resolved Date", sync_stats.get('task_resolved_changed', 0)),
+                ("Ticket Resolved Date", sync_stats.get('ticket_resolved_changed', 0)),
+                ("Customer Name", sync_stats.get('customer_name_changed', 0)),
+            ]
+            field_df = pd.DataFrame(field_changes, columns=['Field', 'Records Changed'])
+            field_df = field_df[field_df['Records Changed'] > 0]  # Only show fields with changes
+            if not field_df.empty:
+                st.dataframe(field_df, use_container_width=True, hide_index=True)
+            else:
+                st.info("No task/ticket field changes detected")
+        
+        # Worklog Statistics
+        st.subheader("📝 Worklog Sync Statistics")
+        col_w1, col_w2, col_w3, col_w4 = st.columns(4)
+        with col_w1:
+            st.metric("Total Worklogs", sync_stats.get('worklogs_after', 0))
+        with col_w2:
+            st.metric("New Worklogs", sync_stats.get('new_worklogs', 0), help="New worklog entries")
+        with col_w3:
+            st.metric("Updated Worklogs", sync_stats.get('worklogs_updated', 0), help="Worklogs with field changes")
+        with col_w4:
+            delta = sync_stats.get('worklogs_after', 0) - sync_stats.get('worklogs_before', 0)
+            st.metric("Net Change", delta if delta != 0 else "—")
+        
+        # Field-level worklog changes
+        with st.expander("📋 Worklog Field Changes", expanded=True):
+            wl_field_changes = [
+                ("Minutes Spent", sync_stats.get('worklog_minutes_changed', 0)),
+                ("Description", sync_stats.get('worklog_description_changed', 0)),
+                ("Log Date", sync_stats.get('worklog_logdate_changed', 0)),
+            ]
+            wl_field_df = pd.DataFrame(wl_field_changes, columns=['Field', 'Records Changed'])
+            wl_field_df = wl_field_df[wl_field_df['Records Changed'] > 0]
+            if not wl_field_df.empty:
+                st.dataframe(wl_field_df, use_container_width=True, hide_index=True)
+            else:
+                st.info("No worklog field changes detected")
+        
+        # Detailed Reports
+        st.markdown("---")
+        
+        # New Tasks by Status
+        new_by_status = sync_stats.get('new_tasks_by_status', {})
+        if new_by_status:
+            with st.expander(f"🆕 New Tasks by Status ({sync_stats.get('new_tasks', 0)} total)", expanded=True):
+                status_data = []
+                for status, count in sorted(new_by_status.items(), key=lambda x: -x[1]):
+                    marker = "🔴" if status in CLOSED_STATUSES else "🟢"
+                    status_data.append({'Status': f"{marker} {status}", 'Count': count})
+                st.dataframe(pd.DataFrame(status_data), use_container_width=True, hide_index=True)
+        
+        # Task Status Changes
+        task_status_changes = sync_stats.get('task_status_changes', [])
+        if task_status_changes:
+            with st.expander(f"🔄 Task Status Changes ({len(task_status_changes)} tasks)", expanded=True):
+                # Aggregate by transition type
+                transitions = {}
+                for change in task_status_changes:
+                    key = f"{change['old_status']} → {change['new_status']}"
+                    transitions[key] = transitions.get(key, 0) + 1
+                
+                transition_data = []
+                for transition, count in sorted(transitions.items(), key=lambda x: -x[1]):
+                    transition_data.append({'Status Change': transition, 'Count': count})
+                st.dataframe(pd.DataFrame(transition_data), use_container_width=True, hide_index=True)
+                
+                # Show individual changes in nested expander
+                with st.expander("View individual task changes"):
+                    changes_df = pd.DataFrame(task_status_changes)
+                    changes_df.columns = ['Task #', 'Old Status', 'New Status']
+                    st.dataframe(changes_df, use_container_width=True, hide_index=True)
+        
+        # No changes message
+        if not new_by_status and not task_status_changes and sync_stats.get('new_worklogs', 0) == 0:
+            st.info("ℹ️ No new tasks, status changes, or worklog entries detected.")
+        
+        # Clear button
+        if st.button("Clear Statistics"):
+            st.session_state.pop('snowflake_refresh_success', None)
+            st.session_state.pop('snowflake_sync_stats', None)
+            st.rerun()
     
     with col3:
         # Show last refresh time
@@ -215,7 +345,7 @@ URL: {config.get('url', config.get('account', 'Not set'))}""")
     st.divider()
     
     # Current Data Status
-    st.subheader("📊 Current Task Data")
+    st.subheader("Current Task Data")
     
     all_tasks = task_store.get_all_tasks()
     
@@ -229,8 +359,8 @@ URL: {config.get('url', config.get('account', 'Not set'))}""")
             st.metric("Total Tasks", len(all_tasks))
         
         with col2:
-            if 'Status' in all_tasks.columns:
-                open_count = len(all_tasks[~all_tasks['Status'].isin(CLOSED_STATUSES)])
+            if 'TaskStatus' in all_tasks.columns:
+                open_count = len(all_tasks[~all_tasks['TaskStatus'].isin(CLOSED_STATUSES)])
                 st.metric("Open Tasks", open_count)
         
         with col3:
@@ -254,7 +384,7 @@ URL: {config.get('url', config.get('account', 'Not set'))}""")
         if current_sprint:
             st.success(f"📅 Current Sprint: **Sprint {current_sprint['SprintNumber']} - {current_sprint['SprintName']}** ({current_sprint['SprintStartDt'].strftime('%Y-%m-%d')} to {current_sprint['SprintEndDt'].strftime('%Y-%m-%d')})")
         
-        st.page_link("pages/1_📊_Overview.py", label="📊 Go to Overview", icon="📊")
+        st.page_link("pages/1_Overview.py", label="Go to Overview")
 
 # =============================================================================
 # CSV MODE (Legacy)
@@ -287,9 +417,9 @@ else:
         """)
     
     # Show Snowflake exploration tools if configured (even when not enabled)
-    if snowflake_configured:
+    if snowflake_configured and not snowflake_mode:
         st.divider()
-        st.subheader("❄️ Snowflake Database Explorer")
+        st.subheader("Snowflake Database Explorer")
         st.info("ℹ️ Snowflake is configured but **not enabled** for data loading. Use CSV upload above, or explore the database below.")
         
         col1, col2 = st.columns([1, 1])
@@ -381,7 +511,7 @@ Enabled: {config.get('enabled', False)}""")
         mapped_df = data_loader.map_itrack_to_sprint(itrack_df)
         
         # Preview task summary (no auto sprint assignment)
-        st.subheader("📊 Step 2: Review Task Summary")
+        st.subheader("Step 2: Review Task Summary")
         
         st.info("📋 **Note:** Tasks will be added to the backlog. Use **Work Backlogs** page to assign sprints.")
         
@@ -389,15 +519,15 @@ Enabled: {config.get('enabled', False)}""")
         col1, col2 = st.columns(2)
         
         with col1:
-            if 'Status' in mapped_df.columns:
+            if 'TaskStatus' in mapped_df.columns:
                 st.markdown("**Tasks by Status:**")
-                status_counts = mapped_df['Status'].value_counts()
+                status_counts = mapped_df['TaskStatus'].value_counts()
                 for status, count in status_counts.items():
                     marker = "🔴" if status in CLOSED_STATUSES else "🟢"
                     st.write(f"{marker} {status}: **{count}**")
         
         with col2:
-            open_count = len(mapped_df[~mapped_df['Status'].isin(CLOSED_STATUSES)]) if 'Status' in mapped_df.columns else len(mapped_df)
+            open_count = len(mapped_df[~mapped_df['TaskStatus'].isin(CLOSED_STATUSES)]) if 'TaskStatus' in mapped_df.columns else len(mapped_df)
             closed_count = len(mapped_df) - open_count
             
             st.metric("Open Tasks", open_count, help="Available for sprint assignment in Work Backlogs")
@@ -448,7 +578,7 @@ Enabled: {config.get('enabled', False)}""")
             # DETAILED IMPORT REPORT
             # =================================================================
             st.markdown("---")
-            st.subheader("📊 Detailed Import Report")
+            st.subheader("Detailed Import Report")
             
             # New Tasks by Status
             new_by_status = stats.get('new_tasks_by_status', {})
@@ -528,12 +658,12 @@ Enabled: {config.get('enabled', False)}""")
             
             # Link to Work Backlogs
             st.markdown("### 👉 Next Steps:")
-            st.page_link("pages/4_PIBIDS_Sprint_Planning/2_📋_Backlog_Assign.py", label="Assign Tasks to Sprints", icon="📋")
+            st.page_link("pages/4_PIBIDS_Sprint_Planning/2_Backlog_Assign.py", label="Assign Tasks to Sprints")
 
     else:
         # Show current store status when no file uploaded
         st.divider()
-        st.subheader("📊 Current Task Store Status")
+        st.subheader("Current Task Store Status")
         
         all_tasks = task_store.get_all_tasks()
         
@@ -546,8 +676,8 @@ Enabled: {config.get('enabled', False)}""")
                 st.metric("Total Tasks", len(all_tasks))
             
             with col2:
-                if 'Status' in all_tasks.columns:
-                    open_count = len(all_tasks[~all_tasks['Status'].isin(CLOSED_STATUSES)])
+                if 'TaskStatus' in all_tasks.columns:
+                    open_count = len(all_tasks[~all_tasks['TaskStatus'].isin(CLOSED_STATUSES)])
                     st.metric("Open Tasks", open_count)
             
             with col3:
@@ -572,7 +702,7 @@ Enabled: {config.get('enabled', False)}""")
             if current_sprint:
                 st.success(f"📅 Current Sprint: **Sprint {current_sprint['SprintNumber']} - {current_sprint['SprintName']}** ({current_sprint['SprintStartDt'].strftime('%Y-%m-%d')} to {current_sprint['SprintEndDt'].strftime('%Y-%m-%d')})")
             
-            st.page_link("pages/1_📊_Overview.py", label="📊 Go to Overview", icon="📊")
+            st.page_link("pages/1_Overview.py", label="Go to Overview")
             
             # =================================================================
             # CLEANUP OLD CLOSED TASKS SECTION
@@ -616,8 +746,8 @@ Enabled: {config.get('enabled', False)}""")
                             st.write(f"- {status}: {count}")
                     
                     st.rerun()
-            else:
-                st.error("❌ Failed to save after cleanup. Check file permissions.")
+                else:
+                    st.error("❌ Failed to save after cleanup. Check file permissions.")
 
 # Worklog Upload Section
 st.divider()
@@ -669,7 +799,7 @@ if worklog_file:
         # Reset singleton to reload data
         reset_worklog_store()
         
-        st.page_link("pages/5_📊_Worklog_Activity.py", label="📊 View Worklog Activity Report", icon="📊")
+        st.page_link("pages/5_Worklog_Activity.py", label="View Worklog Activity Report")
     else:
         st.error(f"❌ {message}")
 else:
@@ -679,6 +809,6 @@ else:
     
     if not all_worklogs.empty:
         st.info(f"📊 Current worklog data: **{len(all_worklogs)}** entries loaded")
-        st.page_link("pages/5_📊_Worklog_Activity.py", label="📊 View Worklog Activity Report", icon="📊")
+        st.page_link("pages/5_Worklog_Activity.py", label="View Worklog Activity Report")
     else:
         st.caption("No worklog data imported yet.")

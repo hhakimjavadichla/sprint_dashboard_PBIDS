@@ -1,0 +1,14 @@
+Username,Password,Role,Section,DisplayName,Active
+admin,admin123,Admin,,Administrator,True
+testuser,test123,Section User,CoreLab - Chemistry,Test User,True
+corelab,corelab123,Section User,"CoreLab - Hematology,CoreLab - Coagulation,LSC - Outreach Services,CoreLab - Chemistry,LSS - Send out Laboratory,CoreLab - Point of Care,LSS - Lab Support Services - MainLab,LSS - Lab Support Services - OPLab,CoreLab - Bone Marrow Lab,CoreLab - Special Chemistry",CoreLab Tester,True
+micro,micro123,Section Manager,"Micro - Microbiology,Micro - Molecular Virology",Micro Tester,True
+multiuser,multi123,Section User,"Micro - Microbiology,CPM - Molecular",Multi-Section Tester,True
+hla,hla123,Section Manager,HLA,hla tester,True
+immunology,immunology123,Section Manager,Immunology,immunology tester,True
+tmuser,tmuser123,Section User,"TM - Blood Bank,TM - Donor Center,TM - Therapeutic Apheresis",Transfusion Medicine User,True
+pcareuser,pcareuser123,Section User,PCare,PCARE User,True
+cprsuser,cprsuser123,Section User,AP - Biorepository,CPRS User,True
+cpmuser,cpmuser123,Section User,"CPM - Molecular,CPM - Cytogenetics",CPM User,True
+rrene,rrene123,PBIDS User,PIBIDS,Ryan Rene,True
+mkusumo,mkusumo123,PBIDS User,"LSC - Laboratory Service Center,Micro - Microbiology,CoreLab - Coagulation,PCare,CoreLab - Hematology,HLA,LSC - Outreach Services,PIBIDS,Immunology,CoreLab - Chemistry,LSS - Send out Laboratory,Micro - Molecular Virology,CoreLab - Point of Care,CPM - Molecular,TM - Blood Bank,AP - Anatomic Pathology,LSS - Lab Support Services - MainLab,LSS - Lab Support Services - OPLab,CoreLab - Bone Marrow Lab,CoreLab - Special Chemistry,CPM - Cytogenetics,AP - Biorepository,TM - Donor Center,TM - Therapeutic Apheresis",Marietta Kusumo,True

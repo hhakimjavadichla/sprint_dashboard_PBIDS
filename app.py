@@ -1,6 +1,6 @@
 """
-PBIDS Sprint Workflow Dashboard - PROTOTYPE
-Developed by the PBIDS Team for internal testing
+PIBIDS Sprint Workflow Dashboard - PROTOTYPE
+Developed by the PIBIDS Team for internal testing
 This is NOT a production system
 """
 import streamlit as st
@@ -8,7 +8,7 @@ from components.auth import check_authentication, display_login_form, display_us
 
 # Page configuration - MUST be first Streamlit command
 st.set_page_config(
-    page_title="PBIDS Sprint Dashboard (Prototype)",
+    page_title="PIBIDS Sprint Dashboard (Prototype)",
     page_icon="🧪",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -21,12 +21,12 @@ if 'authenticated' not in st.session_state:
 # Check if user is authenticated
 if not check_authentication():
     # Show login page
-    st.markdown("## 🧪 PBIDS Sprint Dashboard")
-    st.caption("**PROTOTYPE** - Developed by PBIDS Team")
+    st.markdown("## 🧪 PIBIDS Sprint Dashboard")
+    st.caption("**PROTOTYPE** - Developed by PIBIDS Team")
     
     st.markdown("### Welcome")
     st.markdown("""
-    This prototype explores sprint workflow management for the PBIDS team.
+    This prototype explores sprint workflow management for the PIBIDS team.
     
     **Features:** Sprint generation · TAT monitoring · Capacity tracking · Progress visibility · Section views
     
@@ -57,22 +57,22 @@ if not check_authentication():
 
 # User is authenticated - show navigation
 # Define pages for navigation
-overview_page = st.Page("pages/1_📊_Overview.py", title="Overview", icon="📊")
+overview_page = st.Page("pages/1_Overview.py", title="Overview")
 
 # Lab Section View pages
-sprint_prioritization = st.Page("pages/2_Lab_Section_View/1_📋_Sprint_Prioritization.py", title="Sprint Prioritization", icon="📋")
-sprint_feedback = st.Page("pages/2_Lab_Section_View/2_💬_Sprint_Feedback.py", title="Sprint Feedback", icon="💬")
+sprint_prioritization = st.Page("pages/2_Lab_Section_View/1_Sprint_Prioritization.py", title="Sprint Prioritization")
+sprint_feedback = st.Page("pages/2_Lab_Section_View/2_Sprint_Feedback.py", title="Sprint Feedback")
 
-analytics_page = st.Page("pages/3_📈_Analytics.py", title="Analytics", icon="📈")
+analytics_page = st.Page("pages/3_Analytics.py", title="Analytics")
 
 # PIBIDS Sprint Planning pages
-sprint_update = st.Page("pages/4_PIBIDS_Sprint_Planning/1_✏️_Sprint_Update.py", title="Sprint Update", icon="✏️")
-backlog_assign = st.Page("pages/4_PIBIDS_Sprint_Planning/2_📋_Backlog_Assign.py", title="Backlog Assign", icon="📋")
+sprint_update = st.Page("pages/4_PIBIDS_Sprint_Planning/1_Sprint_Update.py", title="Sprint Update")
+backlog_assign = st.Page("pages/4_PIBIDS_Sprint_Planning/2_Backlog_Assign.py", title="Backlog Assign")
 
-worklog_page = st.Page("pages/5_📊_Worklog_Activity.py", title="Worklog Activity", icon="📊")
-admin_page = st.Page("pages/6_⚙️_Admin_Config.py", title="Admin Config", icon="⚙️")
-upload_page = st.Page("pages/7_📤_Upload_Tasks.py", title="Data Source", icon="📤")
-feature_requests_page = st.Page("pages/8_📝_Feature_Requests.py", title="Feature Requests", icon="📝")
+worklog_page = st.Page("pages/5_Worklog_Activity.py", title="Worklog Activity")
+admin_page = st.Page("pages/6_Admin_Config.py", title="Admin Config")
+upload_page = st.Page("pages/7_Data_Source.py", title="Data Source")
+feature_requests_page = st.Page("pages/8_Feature_Requests.py", title="Feature Requests")
 
 # Create navigation with sections based on user role
 nav_sections = {

@@ -6,6 +6,7 @@ import os
 import pandas as pd
 from datetime import datetime, date
 from typing import Optional, Tuple, List
+from modules.sqlite_store import is_sqlite_enabled, load_offdays, save_offdays
 
 # Default storage path
 DEFAULT_OFFDAYS_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'team_offdays.csv')
@@ -26,10 +27,13 @@ class OffDaysStore:
     
     def __init__(self, store_path: str = None):
         self.store_path = store_path or DEFAULT_OFFDAYS_PATH
+        self.use_sqlite = is_sqlite_enabled()
         self.offdays_df = self._load_store()
     
     def _load_store(self) -> pd.DataFrame:
-        """Load off days from CSV"""
+        """Load off days from CSV or SQLite"""
+        if self.use_sqlite:
+            return self._load_from_sqlite()
         if not os.path.exists(self.store_path):
             df = pd.DataFrame(columns=OFFDAYS_COLUMNS)
             self._save_df(df)
@@ -56,8 +60,18 @@ class OffDaysStore:
             return False
     
     def save(self) -> bool:
-        """Save current state to CSV"""
+        """Save current state to CSV or SQLite"""
+        if self.use_sqlite:
+            return save_offdays(None, self.offdays_df)
         return self._save_df(self.offdays_df)
+
+    def _load_from_sqlite(self) -> pd.DataFrame:
+        """Load off days from SQLite."""
+        df = load_offdays()
+        for col in OFFDAYS_COLUMNS:
+            if col not in df.columns:
+                df[col] = ''
+        return df
     
     def reload(self):
         """Reload data from disk"""

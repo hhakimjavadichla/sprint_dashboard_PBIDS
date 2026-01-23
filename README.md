@@ -1,6 +1,6 @@
 # PBIDS Sprint Dashboard
 
-**Version 1.2** — Developed by the PIBIDS Team
+**Version 1.3** — Developed by the PIBIDS Team
 
 A sprint management dashboard for workflow tracking. Imports task data from iTrack, manages sprint assignments through Work Backlogs, tracks capacity with Goal Type planning, and provides TAT-based priority monitoring.
 
@@ -9,10 +9,11 @@ A sprint management dashboard for workflow tracking. Imports task data from iTra
 ### Core Features
 - **Work Backlogs & Sprint Assignment** — Central hub for all open tasks; admin assigns tasks to sprints
 - **Sprint Assignment Tracking** — `SprintsAssigned` column tracks all sprint assignments per task
-- **Automatic Carryover** — Open tasks automatically carry over to next sprint
+- **Manual Sprint Assignment** — No automatic carryover; admin explicitly assigns tasks to each sprint
 - **Goal Type Planning** — Mandatory (60% capacity) vs Stretch (20% capacity) goals
 - **Capacity Management** — Per-person limits: 48 hrs Mandatory, 16 hrs Stretch, 80 hrs Total
 - **TAT Monitoring** — IR escalation at 0.8 days, SR at 22 days, at-risk warnings at 75%
+- **SQLite Database Support** — Optional SQLite backend for improved data integrity and performance
 
 ### Role-Based Access (4 User Roles)
 - **Admin** — Full access to all features
@@ -137,10 +138,16 @@ sprint_dashboard_PBIDS/
 │   ├── users.csv                   # User accounts
 │   ├── sprint_calendar.csv         # Sprint definitions
 │   ├── feedback.csv                # Sprint feedback
-│   └── offdays.csv                 # Off day configurations
+│   ├── offdays.csv                 # Off day configurations
+│   └── sprint_dashboard.db         # SQLite database (when enabled)
+├── modules/                        # Core business logic (continued)
+│   ├── sqlite_db.py                # SQLite schema and connection
+│   ├── sqlite_store.py             # SQLite data access layer
+│   └── sqlite_migration.py         # CSV to SQLite migration
 └── docs/                           # Documentation
     ├── PBIDS_Sprint_Dashboard_System_Requirements_v1.1_2026-01-07.md
-    └── PBIDS_Sprint_Dashboard_System_Requirements_v1.2_2026-01-13.md
+    ├── PBIDS_Sprint_Dashboard_System_Requirements_v1.2_2026-01-13.md
+    └── PBIDS_Sprint_Dashboard_System_Requirements_v1.3_2026-01-20.md
 ```
 
 ## Core Concepts
@@ -162,15 +169,15 @@ Open Tasks                    Completed Tasks
     │                              │
     ▼                              ▼
 Work Backlogs ──────────────► Removed from Backlog
-    │                         (auto-assigned to original sprint)
-    │ Admin assigns
+    │                         (assigned to original sprint)
+    │ Admin manually assigns
     ▼
 Sprint View (can be assigned to multiple sprints)
 ```
 
-### No Automatic Carryover
+### Manual Sprint Assignment (No Automatic Carryover)
 
-**Important:** Tasks do NOT automatically carry over to the next sprint. The admin must explicitly assign each task to each sprint from the Work Backlogs.
+**Important:** Tasks do NOT automatically carry over to the next sprint. The admin must explicitly assign each task to each sprint from the Work Backlogs. This provides full control over sprint scope and prevents unwanted task accumulation.
 
 ---
 
@@ -306,10 +313,10 @@ Defines which system owns each field during imports:
 
 ### Sprint Assignment Rules
 
-1. **Completed tasks** are auto-assigned to their `OriginalSprintNumber`
+1. **Completed tasks** are assigned to their `OriginalSprintNumber`
 2. **Open tasks** go to Work Backlogs with `SprintsAssigned` = empty
-3. Admin assigns tasks to sprints from backlog
-4. **Validation**: Cannot assign task to sprint older than its `OriginalSprintNumber`
+3. Admin manually assigns tasks to sprints from backlog
+4. **No automatic carryover** — tasks do NOT automatically move to next sprint
 5. Tasks can be assigned to multiple sprints (tracked in `SprintsAssigned`)
 
 ### Task Origin
@@ -318,8 +325,7 @@ When viewing a sprint, each task has a `TaskOrigin`:
 
 | TaskOrigin | Description | Color |
 |------------|-------------|-------|
-| **New** | Task created in this sprint (`OriginalSprintNumber` = current sprint) | 🟢 Green |
-| **Assigned** | Task assigned from backlog (`OriginalSprintNumber` ≠ current sprint) | 🔵 Blue |
+| **Assigned** | Task manually assigned to this sprint by admin | 🔵 Blue |
 
 ### Goal Type & Capacity
 
@@ -407,7 +413,30 @@ Internal use only — PBIDS Team
 
 ## Version
 
-**v1.2** — January 13, 2026
+**v1.3** — January 20, 2026
+
+### What's New in v1.3
+
+#### Manual Sprint Assignment (No Automatic Carryover)
+- Tasks do **NOT** automatically carry over to the next sprint
+- Admin must explicitly assign each task to each sprint from Work Backlogs
+- Provides full control over sprint scope and prevents unwanted task accumulation
+- `TaskOrigin` simplified to "Assigned" for all manually assigned tasks
+
+#### SQLite Database Support
+- **Optional SQLite backend** for improved data integrity and performance
+- Enable via environment variable: `SPRINT_DASHBOARD_USE_SQLITE=true`
+- Custom DB path: `SPRINT_DASHBOARD_DB_PATH=/path/to/db.sqlite`
+- **Migration tool**: Convert existing CSV data to SQLite with `python -m modules.sqlite_migration`
+- Normalized schema: tickets, tasks, annotations, sprint assignments, worklogs
+- Compatibility view maintains existing UI behavior
+- Supports concurrent access and ACID transactions
+
+#### Data Storage Options
+| Mode | Enable | Data Files |
+|------|--------|------------|
+| CSV (default) | Default behavior | `data/*.csv` |
+| SQLite | `SPRINT_DASHBOARD_USE_SQLITE=true` | `data/sprint_dashboard.db` |
 
 ### What's New in v1.2
 

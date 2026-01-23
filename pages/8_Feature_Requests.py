@@ -5,6 +5,8 @@ Admin-only page for tracking feature requests, revisions, and other changes.
 import streamlit as st
 import pandas as pd
 import os
+import base64
+import uuid
 from datetime import datetime
 from pathlib import Path
 from components.auth import require_admin, display_user_info
@@ -12,6 +14,7 @@ from components.auth import require_admin, display_user_info
 # Data file path
 DATA_DIR = Path(__file__).parent.parent / 'data'
 REQUESTS_FILE = DATA_DIR / 'feature_requests.csv'
+IMAGES_DIR = DATA_DIR / 'feature_request_images'
 
 # Field definitions
 CATEGORIES = ['Feature Request', 'Revision', 'Layout', 'Spelling/Typo', 'Bug Fix', 'Question', 'Other']
@@ -29,7 +32,8 @@ COLUMNS = [
     'Response',
     'ImplementationStatus',
     'ImplementationDate',
-    'ConfirmImplemented'
+    'ConfirmImplemented',
+    'ImagePath'
 ]
 
 
@@ -59,8 +63,44 @@ def generate_request_id() -> str:
     return f"REQ-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
 
+def save_image(uploaded_file=None, base64_data=None, request_id=None) -> str:
+    """Save uploaded or pasted image to disk. Returns the relative path."""
+    os.makedirs(IMAGES_DIR, exist_ok=True)
+    
+    if uploaded_file is not None:
+        # Get file extension
+        ext = Path(uploaded_file.name).suffix.lower()
+        if ext not in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
+            ext = '.png'
+        filename = f"{request_id}_{uuid.uuid4().hex[:8]}{ext}"
+        filepath = IMAGES_DIR / filename
+        with open(filepath, 'wb') as f:
+            f.write(uploaded_file.getbuffer())
+        return str(filepath.relative_to(DATA_DIR.parent))
+    
+    elif base64_data is not None:
+        # Handle base64 pasted image
+        filename = f"{request_id}_{uuid.uuid4().hex[:8]}.png"
+        filepath = IMAGES_DIR / filename
+        # Remove data URL prefix if present
+        if ',' in base64_data:
+            base64_data = base64_data.split(',')[1]
+        with open(filepath, 'wb') as f:
+            f.write(base64.b64decode(base64_data))
+        return str(filepath.relative_to(DATA_DIR.parent))
+    
+    return ''
+
+
+def get_image_path(relative_path: str) -> Path:
+    """Convert relative path to absolute path."""
+    if relative_path and relative_path.strip():
+        return DATA_DIR.parent / relative_path
+    return None
+
+
 # Page setup
-st.title("📝 Feature Requests & Revisions")
+st.title("Feature Requests & Revisions")
 st.caption("_Track feature requests, revisions, and other changes — Admin Only_")
 
 # Require admin access
@@ -89,7 +129,7 @@ with st.expander("ℹ️ How to use this page", expanded=False):
 requests_df = load_requests()
 
 # Tabs
-tab1, tab2 = st.tabs(["📋 View Requests", "➕ New Request"])
+tab1, tab2 = st.tabs(["View Requests", "New Request"])
 
 # ============================================================================
 # VIEW REQUESTS TAB
@@ -160,6 +200,15 @@ with tab1:
                 st.markdown(f"**Request:** {row.get('Request', '')}")
                 st.markdown(f"**Requested by:** {row.get('RequestedBy', 'Unknown')} on {row.get('RequestDate', 'Unknown')}")
                 
+                # Display attached image if exists
+                image_path_str = row.get('ImagePath', '')
+                if image_path_str and str(image_path_str).strip() and str(image_path_str) != 'nan':
+                    abs_image_path = get_image_path(image_path_str)
+                    if abs_image_path and abs_image_path.exists():
+                        st.image(str(abs_image_path), caption="Attached image", width=400)
+                    else:
+                        st.caption("_Image file not found_")
+                
                 st.divider()
                 
                 # Editable fields
@@ -223,61 +272,154 @@ with tab1:
 with tab2:
     st.subheader("Submit New Request")
     
-    with st.form("new_request_form"):
-        request_text = st.text_area(
-            "Request *",
-            placeholder="Describe the feature, revision, or question...",
-            height=150
+    # Initialize session state for pasted image
+    if 'pasted_image_data' not in st.session_state:
+        st.session_state.pasted_image_data = None
+    
+    request_text = st.text_area(
+        "Request *",
+        placeholder="Describe the feature, revision, or question...",
+        height=150,
+        key="new_request_text"
+    )
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        category = st.selectbox(
+            "Category *",
+            options=CATEGORIES,
+            key="new_request_category"
         )
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            category = st.selectbox(
-                "Category *",
-                options=CATEGORIES
-            )
-        
-        with col2:
-            status = st.selectbox(
-                "Initial Status",
-                options=REQUEST_STATUS,
-                index=0
-            )
-        
-        submitted = st.form_submit_button("📤 Submit Request", type="primary")
-        
-        if submitted:
-            if not request_text.strip():
-                st.error("Please enter a request description")
-            else:
-                # Create new request
-                new_request = {
-                    'RequestID': generate_request_id(),
-                    'Request': request_text.strip(),
-                    'Category': category,
-                    'RequestDate': datetime.now().strftime('%Y-%m-%d'),
-                    'RequestedBy': st.session_state.get('username', 'Unknown'),
-                    'Status': status,
-                    'Response': '',
-                    'ImplementationStatus': 'Not Started',
-                    'ImplementationDate': '',
-                    'ConfirmImplemented': 'No'
-                }
-                
-                # Add to dataframe
-                new_df = pd.DataFrame([new_request])
-                requests_df = pd.concat([requests_df, new_df], ignore_index=True)
-                
-                save_requests(requests_df)
-                st.success(f"✅ Request submitted! ID: {new_request['RequestID']}")
-                st.rerun()
+    
+    with col2:
+        status = st.selectbox(
+            "Initial Status",
+            options=REQUEST_STATUS,
+            index=0,
+            key="new_request_status"
+        )
+    
+    # Image upload section
+    st.markdown("**Attach Image** _(optional)_")
+    
+    uploaded_image = st.file_uploader(
+        "Upload an image",
+        type=['png', 'jpg', 'jpeg', 'gif', 'webp'],
+        key="new_request_image",
+        help="Upload a screenshot or image file"
+    )
+    
+    # Clipboard paste area using HTML/JS
+    st.markdown("""
+    <style>
+    .paste-area {
+        border: 2px dashed #ccc;
+        border-radius: 8px;
+        padding: 20px;
+        text-align: center;
+        color: #666;
+        margin: 10px 0;
+        cursor: pointer;
+        transition: border-color 0.3s;
+    }
+    .paste-area:hover, .paste-area:focus {
+        border-color: #1f77b4;
+        outline: none;
+    }
+    .paste-area.has-image {
+        border-color: #28a745;
+        background-color: #f0fff0;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # JavaScript for clipboard paste
+    paste_js = """
+    <div id="paste-area" class="paste-area" tabindex="0" 
+         onclick="this.focus()" 
+         onpaste="handlePaste(event)">
+        📋 Click here and press Ctrl+V (or Cmd+V) to paste an image from clipboard
+    </div>
+    <img id="pasted-preview" style="max-width:300px; max-height:200px; display:none; margin-top:10px; border-radius:4px;" />
+    <input type="hidden" id="pasted-image-data" />
+    
+    <script>
+    function handlePaste(e) {
+        const items = e.clipboardData.items;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+                const blob = items[i].getAsFile();
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const base64 = event.target.result;
+                    document.getElementById('pasted-preview').src = base64;
+                    document.getElementById('pasted-preview').style.display = 'block';
+                    document.getElementById('paste-area').classList.add('has-image');
+                    document.getElementById('paste-area').innerHTML = '✅ Image pasted! (paste again to replace)';
+                    document.getElementById('pasted-image-data').value = base64;
+                    
+                    // Send to Streamlit
+                    const data = {base64: base64};
+                    window.parent.postMessage({type: 'streamlit:setComponentValue', value: data}, '*');
+                };
+                reader.readAsDataURL(blob);
+                e.preventDefault();
+                break;
+            }
+        }
+    }
+    </script>
+    """
+    
+    st.components.v1.html(paste_js, height=120)
+    
+    # Show preview if uploaded
+    if uploaded_image:
+        st.image(uploaded_image, caption="Uploaded image preview", width=300)
+    
+    st.divider()
+    
+    if st.button("📤 Submit Request", type="primary", use_container_width=True):
+        if not request_text.strip():
+            st.error("Please enter a request description")
+        else:
+            # Generate request ID first
+            request_id = generate_request_id()
+            
+            # Save image if provided
+            image_path = ''
+            if uploaded_image:
+                image_path = save_image(uploaded_file=uploaded_image, request_id=request_id)
+            
+            # Create new request
+            new_request = {
+                'RequestID': request_id,
+                'Request': request_text.strip(),
+                'Category': category,
+                'RequestDate': datetime.now().strftime('%Y-%m-%d'),
+                'RequestedBy': st.session_state.get('username', 'Unknown'),
+                'Status': status,
+                'Response': '',
+                'ImplementationStatus': 'Not Started',
+                'ImplementationDate': '',
+                'ConfirmImplemented': 'No',
+                'ImagePath': image_path
+            }
+            
+            # Add to dataframe
+            new_df = pd.DataFrame([new_request])
+            requests_df = pd.concat([requests_df, new_df], ignore_index=True)
+            
+            save_requests(requests_df)
+            st.success(f"✅ Request submitted! ID: {request_id}")
+            st.rerun()
 
 # ============================================================================
 # SUMMARY SECTION
 # ============================================================================
 st.divider()
-st.subheader("📊 Summary")
+st.subheader("Summary")
 
 if not requests_df.empty:
     col1, col2, col3, col4 = st.columns(4)

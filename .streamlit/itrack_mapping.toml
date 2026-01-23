@@ -30,7 +30,7 @@ Task_Owner = "Assignee"
 Task_Ownerteam = "Task Owner Team"
 Ticket_Ownerteam = "Ticket Owner Team"
 Ticket_Createdby = "Ticket Creator"
-Task_Status = "Status"
+Task_Status = "TaskStatus"
 Ticket_Status = "Ticket Status"
 Ticket_Subject = "Subject"
 Incidentnumber = "Incident Number"
@@ -52,7 +52,7 @@ required_columns = [ "Ticket ID", "Task ID", "Task_Status", "Task_Owner", "Ticke
 [sprint_schema_mapping]
 Task = "TaskNum"
 "Parent ID" = "TicketNum"
-Status = "Status"
+Status = "TaskStatus"
 "Ticket Status" = "TicketStatus"
 Assignee = "AssignedTo"
 Subject = "Subject"
@@ -72,10 +72,43 @@ Team = "Section"
 "Customer Name" = "CustomerName"
 
 [sprint_columns]
-column_order = [ "SprintNumber", "SprintName", "SprintStartDt", "SprintEndDt", "TaskNum", "TicketNum", "TicketType", "Section", "Status", "TicketStatus", "AssignedTo", "CustomerName", "Subject", "CustomerPriority", "DaysOpen", "TaskAssignedDt", "TaskCreatedDt", "TaskResolvedDt", "TicketCreatedDt", "TicketResolvedDt", "HoursEstimated", "GoalType", "DependencyOn", "DependenciesLead", "DependencySecured", "Comments", "TicketTotalTimeSpent", "TaskMinutesSpent",]
+column_order = [ "SprintNumber", "SprintName", "SprintStartDt", "SprintEndDt", "TaskNum", "TicketNum", "TicketType", "Section", "TaskStatus", "TicketStatus", "AssignedTo", "CustomerName", "Subject", "CustomerPriority", "DaysOpen", "TaskAssignedDt", "TaskCreatedDt", "TaskResolvedDt", "TicketCreatedDt", "TicketResolvedDt", "HoursEstimated", "GoalType", "DependencyOn", "DependenciesLead", "DependencySecured", "Comments", "TicketTotalTimeSpent", "TaskMinutesSpent",]
 
 [team_members]
 valid_team_members = [ "iibarraflores", "clee", "mkusumo", "mjimeno", "fsharifi", "creyes", "jskinta", "ansharma", "dxu", "dmaglinte", "hhakimjavadi", "rrene", "yapan", "dbuckley", "amarkowitz",]
+
+[snowflake_task_mapping]
+# Maps Snowflake SQL aliased column names (uppercase) to app schema
+# These are the column names returned by Snowflake after SQL aliasing
+TASKNUM = "TaskNum"
+TICKETNUM = "TicketNum"
+TICKETTYPE = "TicketType"
+TASKSTATUS = "TaskStatus"
+SUBJECT = "Subject"
+ASSIGNEDTO = "AssignedTo"
+TASKOWNERTEAM = "TaskOwnerTeam"
+TASKASSIGNEDDT = "TaskAssignedDt"
+TASKCREATEDDT = "TaskCreatedDt"
+TASKRESOLVEDDT = "TaskResolvedDt"
+TASKMINUTESSPENT = "TaskMinutesSpent"
+TICKETSTATUS = "TicketStatus"
+CUSTOMERNAME = "CustomerName"
+SECTION = "Section"
+TICKETOWNERTEAM = "TicketOwnerTeam"
+TICKETCREATEDBY = "TicketCreatedBy"
+TICKETCREATEDDT = "TicketCreatedDt"
+TICKETRESOLVEDDT = "TicketResolvedDt"
+TICKETTOTALTIMESPENT = "TicketTotalTimeSpent"
+
+[snowflake_worklog_mapping]
+# Maps Snowflake SQL aliased column names (uppercase) to app schema
+RECORDID = "RecordId"
+TASKNUM = "TaskNum"
+OWNER = "Owner"
+DESCRIPTION = "Description"
+LOGDATE = "LogDate"
+MINUTESSPENT = "MinutesSpent"
+SHORTDESCRIPTION = "ShortDescription"
 
 [name_mapping]
 iibarraflores = "Ibarraflores, Irvin"

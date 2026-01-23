@@ -510,12 +510,12 @@ def clean_subject_column(df, subject_col: str = 'Subject'):
 STANDARD_COLUMN_ORDER = [
     # Sprint info (for Sprint Planning, Sprint View)
     'SprintNumber', 'SprintName', 'SprintStartDt', 'SprintEndDt', 'SprintsAssigned',
-    # Ticket/Task identifiers (TicketNum, TicketType, Subject grouped together)
+    # Ticket/Task identifiers
     'TicketNum', 'TicketType', 'Subject',
     # Task info
     'TaskNum', 'TaskCount', 'Section', 'CustomerName',
     # Status and assignment
-    'Status', 'TicketStatus', 'AssignedTo',
+    'TaskStatus', 'TicketStatus', 'AssignedTo',
     # Dates
     'TicketCreatedDt', 'TaskCreatedDt', 'DaysOpen',
     # Planning fields
@@ -535,7 +535,7 @@ BACKLOG_COLUMN_ORDER = [
     # Task info
     'TaskNum', 'TaskCount', 'Section', 'CustomerName',
     # Status and assignment
-    'Status', 'TicketStatus', 'AssignedTo',
+    'TaskStatus', 'TicketStatus', 'AssignedTo',
     # Dates
     'TicketCreatedDt', 'TaskCreatedDt', 'DaysOpen',
     # Planning fields

@@ -13,8 +13,8 @@ from utils.grid_styles import apply_grid_styles
 # Apply styles
 apply_grid_styles()
 
-st.title("💬 Sprint Feedback")
-st.caption("_Prototype — PBIDS Team_")
+st.title("Sprint Feedback")
+st.caption("_Prototype — PIBIDS Team_")
 
 # Require authentication
 require_auth("Sprint Feedback")
@@ -158,7 +158,7 @@ with tab1:
                 st.divider()
 
 with tab2:
-    st.subheader("📋 Your Previous Feedback")
+    st.subheader("Your Previous Feedback")
     
     # Get all feedback by this user
     user_feedback = feedback_store.get_feedback_by_user(username)

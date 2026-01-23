@@ -240,7 +240,7 @@ def suggest_reassignments(df: pd.DataFrame) -> List[Dict]:
                 if available_hours >= task_effort:
                     suggestions.append({
                         'task_num': task['TaskNum'],
-                        'subject': task['Subject'],
+                        'subject': task.get('TaskSubject', ''),
                         'effort': task_effort,
                         'from_person': overloaded_person,
                         'to_person': available_person,

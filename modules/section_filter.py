@@ -44,6 +44,24 @@ def exclude_forever_tickets(df: pd.DataFrame, subject_col: str = 'Subject') -> p
     return df[mask].copy()
 
 
+def exclude_ad_tickets(df: pd.DataFrame, ticket_type_col: str = 'TicketType') -> pd.DataFrame:
+    """
+    Filter out AD (Admin Request) tickets from the DataFrame.
+    
+    Args:
+        df: DataFrame with task data
+        ticket_type_col: Column name containing ticket type (default: 'TicketType')
+    
+    Returns:
+        DataFrame with AD tickets excluded
+    """
+    if df.empty or ticket_type_col not in df.columns:
+        return df
+    
+    mask = df[ticket_type_col].astype(str).str.upper() != 'AD'
+    return df[mask].copy()
+
+
 @lru_cache(maxsize=1)
 def load_valid_team_members() -> List[str]:
     """
@@ -171,9 +189,9 @@ def get_section_summary(df: pd.DataFrame, section: str) -> dict:
         return summary
     
     # Count by status
-    summary['completed'] = len(section_df[section_df['Status'] == 'Completed'])
-    summary['in_progress'] = len(section_df[section_df['Status'] == 'In Progress'])
-    summary['pending'] = len(section_df[section_df['Status'].isin(['Pending', 'Accepted'])])
+    summary['completed'] = len(section_df[section_df['TaskStatus'] == 'Completed'])
+    summary['in_progress'] = len(section_df[section_df['TaskStatus'].isin(['Accepted', 'Assigned', 'Waiting'])])
+    summary['pending'] = len(section_df[section_df['TaskStatus'].isin(['Logged', 'Pending'])])
     
     # At-risk tasks
     summary['at_risk'] = len(section_df[
@@ -250,7 +268,7 @@ def apply_section_filters(
     
     # Status filter
     if status and 'All' not in status:
-        filtered = filtered[filtered['Status'].isin(status)]
+        filtered = filtered[filtered['TaskStatus'].isin(status)]
     
     # Priority range filter
     if priority_range:

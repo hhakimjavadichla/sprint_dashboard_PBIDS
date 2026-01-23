@@ -17,7 +17,7 @@ from components.metrics_dashboard import (
 )
 from utils.exporters import generate_sprint_summary, format_summary_report
 
-st.title("📈 Analytics")
+st.title("Analytics")
 
 # Require authentication
 require_auth("Analytics")
@@ -44,7 +44,7 @@ if user_role != 'Admin' and user_section:
 
 # Check if data is available after filtering
 if sprint_df.empty:
-    st.warning("📭 No tasks available for analytics in your section.")
+    st.warning("No tasks available for analytics in your section.")
     st.caption("Tasks may not be assigned to your section yet, or you may need to check with an administrator.")
     st.stop()
 
@@ -69,9 +69,9 @@ with tab1:
     col1, col2, col3, col4, col5 = st.columns(5)
     
     total = len(sprint_df)
-    completed = len(sprint_df[sprint_df['Status'] == 'Completed'])
-    in_progress = len(sprint_df[sprint_df['Status'] == 'In Progress'])
-    pending = len(sprint_df[sprint_df['Status'].isin(['Pending', 'Accepted'])])
+    completed = len(sprint_df[sprint_df['TaskStatus'] == 'Completed'])
+    in_progress = len(sprint_df[sprint_df['TaskStatus'].isin(['Accepted', 'Assigned', 'Waiting'])])
+    pending = len(sprint_df[sprint_df['TaskStatus'].isin(['Logged', 'Pending'])])
     
     with col1:
         st.metric("Total Tasks", total)
@@ -126,7 +126,7 @@ with tab1:
     st.divider()
     
     # Average Days Open by Ticket Type (excluding forever tickets)
-    st.subheader("📅 Average Days Open by Ticket Type")
+    st.subheader("Average Days Open by Ticket Type")
     st.caption("Excludes Standing Meetings and Miscellaneous Meetings")
     
     from modules.section_filter import exclude_forever_tickets
@@ -252,7 +252,7 @@ with tab2:
             st.success("✅ All IR tasks within TAT")
     
     with col2:
-        st.subheader("📋 Service Requests (SR)")
+        st.subheader("Service Requests (SR)")
         
         sr_data = pd.DataFrame({
             'Metric': ['Total', 'At Risk', 'Exceeded TAT', 'Compliance'],
@@ -358,8 +358,8 @@ with tab3:
                 team_stats.append({
                     'Team Member': person,
                     'Total Tasks': len(person_tasks),
-                    'Completed': len(person_tasks[person_tasks['Status'] == 'Completed']),
-                    'In Progress': len(person_tasks[person_tasks['Status'] == 'In Progress']),
+                    'Completed': len(person_tasks[person_tasks['TaskStatus'] == 'Completed']),
+                    'In Progress': len(person_tasks[person_tasks['TaskStatus'].isin(['Accepted', 'Assigned', 'Waiting'])]),
                     'Estimated Hours': person_tasks['HoursEstimated'].sum(),
                     'Avg Days Open': person_tasks['DaysOpen'].mean()
                 })

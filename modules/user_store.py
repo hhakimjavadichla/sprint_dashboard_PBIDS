@@ -5,16 +5,17 @@ Manages user accounts for authentication.
 import os
 import pandas as pd
 from typing import Optional, Tuple, List, Dict
+from modules.sqlite_store import is_sqlite_enabled, load_users, save_users
 
 # Default storage path
 DEFAULT_USERS_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'users.csv')
 
 # Valid roles
 # Admin: Full access, can edit everything
-# PBIDS User: Read-only, can view all sections but cannot edit
+# PIBIDS User: Read-only, can view all sections but cannot edit
 # Section Manager: Can edit CustomerPriority in their section(s)
 # Section User: Same as Section Manager (may change later)
-VALID_ROLES = ['Admin', 'PBIDS User', 'Section Manager', 'Section User']
+VALID_ROLES = ['Admin', 'PIBIDS User', 'Section Manager', 'Section User']
 
 
 class UserStore:
@@ -22,10 +23,13 @@ class UserStore:
     
     def __init__(self, store_path: str = None):
         self.store_path = store_path or DEFAULT_USERS_PATH
+        self.use_sqlite = is_sqlite_enabled()
         self.users_df = self._load_store()
     
     def _load_store(self) -> pd.DataFrame:
-        """Load users from CSV"""
+        """Load users from CSV or SQLite"""
+        if self.use_sqlite:
+            return self._load_from_sqlite()
         if not os.path.exists(self.store_path):
             # Create default admin user if no file exists
             df = pd.DataFrame([{
@@ -65,8 +69,34 @@ class UserStore:
             return False
     
     def save(self) -> bool:
-        """Save current users to CSV"""
+        """Save current users to CSV or SQLite"""
+        if self.use_sqlite:
+            return save_users(None, self.users_df)
         return self._save_df(self.users_df)
+
+    def _load_from_sqlite(self) -> pd.DataFrame:
+        """Load users from SQLite."""
+        df = load_users()
+        if df.empty:
+            # Create default admin user if no users exist
+            df = pd.DataFrame([{
+                'Username': 'admin',
+                'Password': 'admin123',
+                'Role': 'Admin',
+                'Section': '',
+                'DisplayName': 'Administrator',
+                'Active': True
+            }])
+            save_users(None, df)
+        # Ensure required columns exist
+        required_cols = ['Username', 'Password', 'Role', 'Section', 'DisplayName', 'Active']
+        for col in required_cols:
+            if col not in df.columns:
+                if col == 'Active':
+                    df[col] = True
+                else:
+                    df[col] = ''
+        return df
     
     def reload(self):
         """Reload users from file"""

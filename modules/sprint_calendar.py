@@ -96,10 +96,12 @@ class SprintCalendar:
         if isinstance(date, str):
             date = pd.to_datetime(date)
         
-        # Find sprint where date falls between start and end
+        # Find sprint where date falls between start and end (date-only comparison)
+        # Use .date() to ensure end date is inclusive of entire day
+        check_date = date.date() if hasattr(date, 'date') else pd.to_datetime(date).date()
         matches = self.calendar_df[
-            (self.calendar_df['SprintStartDt'] <= date) & 
-            (self.calendar_df['SprintEndDt'] >= date)
+            (self.calendar_df['SprintStartDt'].dt.date <= check_date) & 
+            (self.calendar_df['SprintEndDt'].dt.date >= check_date)
         ]
         
         if len(matches) == 0:

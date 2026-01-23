@@ -70,9 +70,9 @@ def generate_sprint_summary(sprint_df: pd.DataFrame) -> dict:
     
     # Basic counts
     summary['total_tasks'] = len(sprint_df)
-    summary['completed_tasks'] = len(sprint_df[sprint_df['Status'] == 'Completed'])
-    summary['canceled_tasks'] = len(sprint_df[sprint_df['Status'] == 'Canceled'])
-    summary['in_progress_tasks'] = len(sprint_df[sprint_df['Status'] == 'In Progress'])
+    summary['completed_tasks'] = len(sprint_df[sprint_df['TaskStatus'] == 'Completed'])
+    summary['canceled_tasks'] = len(sprint_df[sprint_df['TaskStatus'] == 'Cancelled'])
+    summary['in_progress_tasks'] = len(sprint_df[sprint_df['TaskStatus'].isin(['Accepted', 'Assigned', 'Waiting'])])
     
     # Completion rate
     if summary['total_tasks'] > 0:

@@ -37,6 +37,9 @@ wheels/
 # Data files - exclude sample data, keep directory structure
 data/*.csv
 !data/.gitkeep
+data/*.db
+data/*.sqlite
+data/*.sqlite3
 
 # Documents folder - exclude sample extracts
 documents/*.csv

@@ -151,7 +151,7 @@ class SprintGenerator:
         
         # Filter: Not Completed and Not Canceled
         carryover = prev_sprint[
-            ~prev_sprint['Status'].isin(STATUS_EXCLUDED)
+            ~prev_sprint['TaskStatus'].isin(STATUS_EXCLUDED)
         ].copy()
         
         if carryover.empty:
@@ -166,8 +166,8 @@ class SprintGenerator:
             
             if not fresh_data.empty:
                 # Update status
-                if 'Status' in fresh_data.columns:
-                    carryover.at[idx, 'Status'] = fresh_data.iloc[0]['Status']
+                if 'TaskStatus' in fresh_data.columns:
+                    carryover.at[idx, 'TaskStatus'] = fresh_data.iloc[0]['TaskStatus']
                 
                 # Note: CustomerPriority is dashboard-only, not updated from iTrack
                 
@@ -319,7 +319,7 @@ class SprintGenerator:
         # Check required columns
         required_cols = [
             'SprintNumber', 'TaskNum', 'TicketNum', 
-            'Status', 'Subject', 'SprintStartDt', 'SprintEndDt'
+            'TaskStatus', 'Subject', 'SprintStartDt', 'SprintEndDt'
         ]
         
         missing = [col for col in required_cols if col not in sprint_df.columns]

@@ -8,7 +8,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 from modules.task_store import get_task_store, CLOSED_STATUSES
-from modules.section_filter import exclude_forever_tickets
+from modules.section_filter import exclude_forever_tickets, exclude_ad_tickets
 from modules.sprint_calendar import get_sprint_calendar
 from components.auth import require_auth, display_user_info, get_user_role, get_user_section
 from components.metrics_dashboard import display_ticket_task_metrics
@@ -20,8 +20,8 @@ from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STY
 # Apply custom tooltip styles
 apply_grid_styles()
 
-st.title("📊 Overview")
-st.caption("_All Tasks Overview — PBIDS Team_")
+st.title("Overview")
+st.caption("_All Tasks Overview — PIBIDS Team_")
 
 # Require authentication
 require_auth("Dashboard")
@@ -40,7 +40,7 @@ if all_tasks is None or all_tasks.empty:
     st.warning("⚠️ No tasks in the system")
     st.info("Upload tasks to view the dashboard")
     if get_user_role() == 'Admin':
-        st.page_link("pages/7_📤_Upload_Tasks.py", label="📤 Upload Tasks", icon="📤")
+        st.page_link("pages/7_Data_Source.py", label="Upload Tasks")
     st.stop()
 
 # Get sprint calendar for filters
@@ -63,7 +63,7 @@ if user_role != 'Admin':
 # ============================================================================
 # FILTERS - At the top of the page
 # ============================================================================
-st.markdown("### 🔍 Filters")
+st.markdown("### Filters")
 
 # Row 1: Sprint and Date filters
 col1, col2, col3, col4 = st.columns(4)
@@ -151,7 +151,7 @@ with col2:
 
 with col3:
     # Status filter
-    available_statuses = sorted(all_tasks['Status'].dropna().unique().tolist()) if 'Status' in all_tasks.columns else []
+    available_statuses = sorted(all_tasks['TaskStatus'].dropna().unique().tolist()) if 'TaskStatus' in all_tasks.columns else []
     selected_statuses = st.multiselect(
         "Status",
         available_statuses,
@@ -177,6 +177,12 @@ with col1:
         "Exclude Forever Tickets",
         value=False,
         help="Hide Standing Meetings and Miscellaneous Meetings tasks"
+    )
+with col2:
+    exclude_ad = st.checkbox(
+        "Exclude AD Tickets",
+        value=False,
+        help="Hide Admin Request (AD) tickets"
     )
 
 st.divider()
@@ -220,7 +226,7 @@ if selected_types:
 
 # Apply status filter
 if selected_statuses:
-    filtered_df = filtered_df[filtered_df['Status'].isin(selected_statuses)]
+    filtered_df = filtered_df[filtered_df['TaskStatus'].isin(selected_statuses)]
 
 # Apply assignee filter
 if selected_assignees:
@@ -229,6 +235,10 @@ if selected_assignees:
 # Apply forever tickets filter
 if exclude_forever:
     filtered_df = exclude_forever_tickets(filtered_df)
+
+# Apply AD tickets filter
+if exclude_ad:
+    filtered_df = exclude_ad_tickets(filtered_df)
 
 # ============================================================================
 # METRICS
@@ -241,8 +251,14 @@ st.divider()
 # ============================================================================
 # TASK TABLE
 # ============================================================================
+filter_notes = []
 if exclude_forever:
-    st.caption(f"📋 Showing **{len(filtered_df)}** tasks (forever tickets excluded)")
+    filter_notes.append("forever tickets excluded")
+if exclude_ad:
+    filter_notes.append("AD tickets excluded")
+
+if filter_notes:
+    st.caption(f"📋 Showing **{len(filtered_df)}** tasks ({', '.join(filter_notes)})")
 else:
     st.caption(f"📋 Showing **{len(filtered_df)}** tasks (of **{len(all_tasks)}** total)")
 
@@ -307,7 +323,7 @@ with tab1:
         gb.configure_column('TicketNum', header_name='Ticket #', width=100)
         gb.configure_column('TicketType', header_name='Type', width=60)
         gb.configure_column('Subject', width=200, tooltipField='Subject')
-        gb.configure_column('Status', width=100)
+        gb.configure_column('TaskStatus', width=100)
         if 'TicketStatus' in available_cols:
             gb.configure_column('TicketStatus', header_name='Ticket Status', width=100)
         gb.configure_column(assignee_col, header_name='Assignee', width=120)
@@ -387,11 +403,11 @@ st.divider()
 col1, col2, col3, col4, col5 = st.columns(5)
 
 with col1:
-    open_count = len(filtered_df[~filtered_df['Status'].isin(CLOSED_STATUSES)])
+    open_count = len(filtered_df[~filtered_df['TaskStatus'].isin(CLOSED_STATUSES)])
     st.metric("Open Tasks", open_count)
 
 with col2:
-    closed_count = len(filtered_df[filtered_df['Status'].isin(CLOSED_STATUSES)])
+    closed_count = len(filtered_df[filtered_df['TaskStatus'].isin(CLOSED_STATUSES)])
     st.metric("Closed Tasks", closed_count)
 
 with col3:

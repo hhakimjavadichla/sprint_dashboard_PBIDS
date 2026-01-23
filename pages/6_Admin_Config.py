@@ -16,21 +16,21 @@ from utils.constants import VALID_SECTIONS
 # Path to itrack mapping config
 ITRACK_MAPPING_PATH = Path(__file__).parent.parent / '.streamlit' / 'itrack_mapping.toml'
 
-st.title("⚙️ Admin Config")
-st.caption("_Configure sprint calendar and user accounts — PBIDS Team_")
+st.title("Admin Config")
+st.caption("_Configure sprint calendar and user accounts — PIBIDS Team_")
 
 # Require admin access
 require_admin("Admin Configuration")
 display_user_info()
 
 # Tabs for different configuration sections
-tab1, tab2, tab3, tab4 = st.tabs(["📅 Sprint Calendar", "👥 User Management", "🧑‍💼 Team Members", "🏖️ Off Days"])
+tab1, tab2, tab3, tab4 = st.tabs(["Sprint Calendar", "User Management", "Team Members", "Team Availability"])
 
 # ============================================================================
 # SPRINT CALENDAR MANAGEMENT
 # ============================================================================
 with tab1:
-    st.subheader("📅 Sprint Calendar Configuration")
+    st.subheader("Sprint Calendar Configuration")
     st.caption("Add or edit sprints")
     
     calendar = get_sprint_calendar()
@@ -62,7 +62,7 @@ with tab1:
     st.divider()
     
     # Add new sprint
-    st.markdown("### ➕ Add New Sprint")
+    st.markdown("### Add New Sprint")
     
     col1, col2 = st.columns(2)
     
@@ -85,7 +85,7 @@ with tab1:
         new_start_date = st.date_input("Start Date", value=suggested_start.date())
         new_end_date = st.date_input("End Date", value=suggested_end.date())
     
-    if st.button("➕ Add Sprint", type="primary"):
+    if st.button("Add Sprint", type="primary"):
         if new_sprint_num in all_sprints['SprintNumber'].values if not all_sprints.empty else False:
             st.error(f"Sprint {new_sprint_num} already exists")
         elif new_end_date <= new_start_date:
@@ -115,7 +115,7 @@ with tab1:
     st.divider()
     
     # Edit existing sprint
-    st.markdown("### ✏️ Edit Sprint")
+    st.markdown("### Edit Sprint")
     
     if not all_sprints.empty:
         sprint_to_edit = st.selectbox(
@@ -139,7 +139,7 @@ with tab1:
             col1, col2 = st.columns(2)
             
             with col1:
-                if st.button("💾 Save Changes", key="save_sprint"):
+                if st.button("Save Changes", key="save_sprint"):
                     if edit_end <= edit_start:
                         st.error("End date must be after start date")
                     else:
@@ -165,7 +165,7 @@ with tab1:
 # USER MANAGEMENT
 # ============================================================================
 with tab2:
-    st.subheader("👥 User Management")
+    st.subheader("User Management")
     st.caption("Add or edit user accounts")
     
     user_store = get_user_store()
@@ -202,7 +202,7 @@ with tab2:
     st.divider()
     
     # Add new user
-    st.markdown("### ➕ Add New User")
+    st.markdown("### Add New User")
     
     col1, col2 = st.columns(2)
     
@@ -224,7 +224,7 @@ with tab2:
         )
         new_section = ','.join(new_sections) if new_sections else ''
     
-    if st.button("➕ Add User", type="primary"):
+    if st.button("Add User", type="primary"):
         if not new_username:
             st.error("Username is required")
         elif not new_password:
@@ -252,7 +252,7 @@ with tab2:
     st.divider()
     
     # Edit existing user
-    st.markdown("### ✏️ Edit User")
+    st.markdown("### Edit User")
     
     if not all_users.empty:
         user_to_edit = st.selectbox(
@@ -366,7 +366,7 @@ with tab2:
 # TEAM MEMBERS MANAGEMENT
 # ============================================================================
 with tab3:
-    st.subheader("🧑‍💼 Team Members Management")
+    st.subheader("Team Members Management")
     st.caption("Manage team members whose tasks appear in the dashboard")
     
     # Load current configuration
@@ -423,7 +423,7 @@ with tab3:
     st.divider()
     
     # Add new team member
-    st.markdown("### ➕ Add New Team Member")
+    st.markdown("### Add New Team Member")
     
     col1, col2 = st.columns(2)
     
@@ -465,7 +465,7 @@ with tab3:
     st.divider()
     
     # Activate/Deactivate team member
-    st.markdown("### 🔄 Activate/Deactivate Team Member")
+    st.markdown("### Activate/Deactivate Team Member")
     
     if team_members:
         # Get inactive members list
@@ -504,7 +504,7 @@ with tab3:
     st.divider()
     
     # Bulk edit section
-    st.markdown("### ✏️ Edit Display Names")
+    st.markdown("### Edit Display Names")
     st.caption("Edit display names in the table below")
     
     # Create editable dataframe
@@ -542,11 +542,11 @@ with tab3:
         st.info("No team members to edit.")
 
 # ============================================================================
-# OFF DAYS MANAGEMENT
+# TEAM AVAILABILITY MANAGEMENT
 # ============================================================================
 with tab4:
-    st.subheader("🏖️ Team Member Off Days")
-    st.caption("Configure off days for team members during sprints")
+    st.subheader("Team Availability")
+    st.caption("Configure availability for team members during sprints")
     
     # Load data
     offdays_store = get_offdays_store()
@@ -603,134 +603,77 @@ with tab4:
         
         st.divider()
         
-        # Availability Grid - checkbox table
-        st.markdown("### 📅 Team Availability Grid")
-        st.caption("✅ = Working day (checked) | ⬜ = Off day (unchecked). Uncheck dates when team members are off.")
+        # Team Availability Table - editable table for sprint-level availability per person
+        st.markdown("### Team Availability")
+        st.caption("Set total hours and allocation percentages per team member for the entire sprint.")
         
-        if sprint_info and sprint_date_strs:
-            # Get current off days for this sprint
-            sprint_offdays = offdays_store.get_offdays_for_sprint(selected_sprint)
-            current_offdays = {}
-            for _, row in sprint_offdays.iterrows():
-                username = row['Username']
-                off_date = row['OffDate']
-                if username not in current_offdays:
-                    current_offdays[username] = set()
-                current_offdays[username].add(off_date)
+        if sprint_info:
+            # Load or initialize availability data from session state
+            availability_key = f"team_availability_{selected_sprint}"
             
-            # Build availability grid data
-            # Rows = team members, Columns = dates
-            # True = working (available), False = off day
-            grid_data = []
-            for member in team_members:
-                display_name = name_mapping.get(member, member)
-                row_data = {'Team Member': display_name, '_username': member}
-                member_offdays = current_offdays.get(member, set())
-                for date_str in sprint_date_strs:
-                    # Column name is formatted date
-                    col_name = pd.to_datetime(date_str).strftime('%m/%d\n%a')
-                    # True if NOT an off day (working), False if off day
-                    row_data[col_name] = date_str not in member_offdays
-                grid_data.append(row_data)
+            # Initialize default values if not in session state
+            if availability_key not in st.session_state:
+                default_data = []
+                for member in team_members:
+                    display_name = name_mapping.get(member, member)
+                    default_data.append({
+                        'Team Member': display_name,
+                        '_username': member,
+                        'Total Hrs Available': 80,
+                        'Total Mandatory Hrs % Available': 70,
+                        'Total Stretch Hours %': 30
+                    })
+                st.session_state[availability_key] = pd.DataFrame(default_data)
             
-            grid_df = pd.DataFrame(grid_data)
+            availability_df = st.session_state[availability_key]
             
-            # Create column config for checkboxes
-            date_columns = [c for c in grid_df.columns if c not in ['Team Member', '_username']]
+            # Column config for editable table
             column_config = {
-                'Team Member': st.column_config.TextColumn('Team Member', width='medium', disabled=True),
-                '_username': None  # Hide username column
+                'Team Member': st.column_config.TextColumn('Team Member', disabled=True),
+                '_username': None,  # Hide username column
+                'Total Hrs Available': st.column_config.NumberColumn(
+                    'Total Hrs Available',
+                    min_value=0,
+                    max_value=200,
+                    step=1,
+                    format='%.0f'
+                ),
+                'Total Mandatory Hrs % Available': st.column_config.NumberColumn(
+                    'Total Mandatory Hrs % Available',
+                    min_value=0,
+                    max_value=100,
+                    step=5,
+                    format='%.0f%%'
+                ),
+                'Total Stretch Hours %': st.column_config.NumberColumn(
+                    'Total Stretch Hours %',
+                    min_value=0,
+                    max_value=100,
+                    step=5,
+                    format='%.0f%%',
+                    disabled=True,
+                    help='Auto-calculated: 100% - Mandatory %'
+                )
             }
-            for col in date_columns:
-                column_config[col] = st.column_config.CheckboxColumn(col, width='small')
             
-            # Display editable grid
-            edited_grid = st.data_editor(
-                grid_df,
+            # Display editable table
+            edited_availability = st.data_editor(
+                availability_df,
                 column_config=column_config,
                 use_container_width=True,
                 hide_index=True,
-                key=f"offdays_grid_{selected_sprint}"
+                key=f"availability_editor_{selected_sprint}"
             )
             
+            # Auto-calculate stretch % as 100% - mandatory %
+            edited_availability['Total Stretch Hours %'] = 100 - edited_availability['Total Mandatory Hrs % Available']
+            
             # Save button
-            if st.button("💾 Save Availability Changes", type="primary", key="save_offdays"):
-                admin_user = st.session_state.get('username', 'admin')
-                changes_made = 0
-                
-                for idx, row in edited_grid.iterrows():
-                    username = row['_username']
-                    member_offdays = current_offdays.get(username, set())
-                    
-                    for date_str in sprint_date_strs:
-                        col_name = pd.to_datetime(date_str).strftime('%m/%d\n%a')
-                        is_working = row[col_name]
-                        was_off = date_str in member_offdays
-                        
-                        if is_working and was_off:
-                            # Was off, now working - remove off day
-                            offdays_store.remove_offday(username, selected_sprint, date_str)
-                            changes_made += 1
-                        elif not is_working and not was_off:
-                            # Was working, now off - add off day
-                            offdays_store.add_offday(
-                                username=username,
-                                sprint_number=selected_sprint,
-                                off_date=date_str,
-                                reason='',
-                                created_by=admin_user
-                            )
-                            changes_made += 1
-                
-                if changes_made > 0:
-                    reset_offdays_store()
-                    st.success(f"✅ Saved {changes_made} availability change(s)")
-                    st.rerun()
-                else:
-                    st.info("No changes to save")
-        
-        # Summary by team member
-        st.divider()
-        st.markdown(f"### 📊 Off Days Summary for Sprint {selected_sprint}")
-        
-        if sprint_info:
-            total_business_days = len(sprint_date_strs) if sprint_date_strs else 0
-            
-            summary_data = []
-            for member in team_members:
-                display_name = name_mapping.get(member, member)
-                off_count = offdays_store.get_offday_count(member, selected_sprint)
-                available_days = total_business_days - off_count
-                available_hours = available_days * 8  # Assuming 8 hours per day
-                
-                summary_data.append({
-                    'Username': member,
-                    'Display Name': display_name,
-                    'Total Days': total_business_days,
-                    'Off Days': off_count,
-                    'Available Days': available_days,
-                    'Available Hours': available_hours
-                })
-            
-            summary_df = pd.DataFrame(summary_data)
-            
-            # Only show members with off days or show all
-            show_all = st.checkbox("Show all team members", value=False)
-            if not show_all:
-                summary_df = summary_df[summary_df['Off Days'] > 0]
-            
-            if summary_df.empty:
-                st.info("No off days configured for any team member in this sprint.")
-            else:
-                st.dataframe(
-                    summary_df,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        'Available Hours': st.column_config.NumberColumn('Available Hours', format='%.0f hrs')
-                    }
-                )
+            if st.button("Save Availability", type="primary", key="save_availability"):
+                st.session_state[availability_key] = edited_availability
+                st.success("✅ Team availability saved for this sprint")
+                st.rerun()
 
 # Footer
 st.divider()
-st.caption("💡 **Note:** Changes to sprint calendar, user accounts, team members, and off days take effect immediately.")
+st.caption("**Note:** Changes to sprint calendar, user accounts, team members, and team availability take effect immediately.")
