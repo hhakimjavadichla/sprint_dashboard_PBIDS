@@ -11,17 +11,28 @@ from modules.sqlite_store import is_sqlite_enabled, load_feedback, save_feedback
 # Default storage path
 DEFAULT_FEEDBACK_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'sprint_feedback.csv')
 
-# Feedback columns
+# Feedback columns (expanded for bidirectional feedback)
 FEEDBACK_COLUMNS = [
     'FeedbackId',
     'SprintNumber',
     'Section',
     'SubmittedBy',
     'SubmittedAt',
+    'FeedbackType',  # 'SectionFeedback' (from sections about PBIDS) or 'PBIDSFeedback' (from PBIDS about sections)
+    # Section feedback fields (about PBIDS support)
     'OverallSatisfaction',
     'WhatWentWell',
-    'WhatDidNotGoWell'
+    'WhatDidNotGoWell',
+    # PBIDS feedback fields (about section collaboration)
+    'CommunicationRating',
+    'ResponsivenessRating',
+    'CollaborationWentWell',
+    'CollaborationImprovement'
 ]
+
+# Feedback types
+FEEDBACK_TYPE_SECTION = 'SectionFeedback'  # From sections about PBIDS
+FEEDBACK_TYPE_PBIDS = 'PBIDSFeedback'  # From PBIDS about sections
 
 
 class FeedbackStore:
@@ -70,8 +81,16 @@ class FeedbackStore:
         return self._save_df(self.feedback_df)
 
     def _load_from_sqlite(self) -> pd.DataFrame:
-        """Load feedback from SQLite."""
+        """Load feedback from SQLite, with CSV fallback."""
         df = load_feedback()
+        
+        # Fallback to CSV if SQLite is empty but CSV exists
+        if df.empty and os.path.exists(self.store_path):
+            try:
+                df = pd.read_csv(self.store_path)
+            except Exception:
+                df = pd.DataFrame(columns=FEEDBACK_COLUMNS)
+        
         for col in FEEDBACK_COLUMNS:
             if col not in df.columns:
                 df[col] = ''
@@ -99,8 +118,15 @@ class FeedbackStore:
         
         return self.feedback_df[self.feedback_df['SubmittedBy'] == username].copy()
     
-    def has_feedback(self, sprint_number: int, section: str, username: str) -> bool:
-        """Check if user has already submitted feedback for a sprint/section"""
+    def has_feedback(self, sprint_number: int, section: str, username: str, feedback_type: str = None) -> bool:
+        """Check if user has already submitted feedback for a sprint/section
+        
+        Args:
+            sprint_number: Sprint number
+            section: Section name
+            username: Username
+            feedback_type: Optional - 'SectionFeedback' or 'PBIDSFeedback'. If None, checks any type.
+        """
         if self.feedback_df.empty:
             return False
         
@@ -109,7 +135,105 @@ class FeedbackStore:
             (self.feedback_df['Section'] == section) &
             (self.feedback_df['SubmittedBy'] == username)
         )
+        
+        if feedback_type and 'FeedbackType' in self.feedback_df.columns:
+            mask = mask & (self.feedback_df['FeedbackType'] == feedback_type)
+        
         return mask.any()
+    
+    def add_section_feedback(
+        self,
+        sprint_number: int,
+        section: str,
+        submitted_by: str,
+        overall_satisfaction: int,
+        what_went_well: str,
+        what_did_not_go_well: str
+    ) -> Tuple[bool, str]:
+        """Add feedback from section users about PBIDS support"""
+        
+        # Check if feedback already exists for this type
+        if self.has_feedback(sprint_number, section, submitted_by, FEEDBACK_TYPE_SECTION):
+            return False, f"Section feedback already submitted for Sprint {sprint_number} by {submitted_by} for section {section}"
+        
+        # Validate satisfaction rating
+        if overall_satisfaction < 1 or overall_satisfaction > 5:
+            return False, "Overall satisfaction must be between 1 and 5"
+        
+        # Generate feedback ID
+        feedback_id = f"FB-SEC-{sprint_number}-{section}-{submitted_by}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        
+        # Create new feedback record
+        new_feedback = pd.DataFrame([{
+            'FeedbackId': feedback_id,
+            'SprintNumber': sprint_number,
+            'Section': section,
+            'SubmittedBy': submitted_by,
+            'SubmittedAt': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'FeedbackType': FEEDBACK_TYPE_SECTION,
+            'OverallSatisfaction': overall_satisfaction,
+            'WhatWentWell': what_went_well,
+            'WhatDidNotGoWell': what_did_not_go_well,
+            'CommunicationRating': None,
+            'ResponsivenessRating': None,
+            'CollaborationWentWell': None,
+            'CollaborationImprovement': None
+        }])
+        
+        self.feedback_df = pd.concat([self.feedback_df, new_feedback], ignore_index=True)
+        
+        if self._save_df(self.feedback_df):
+            return True, "Feedback submitted successfully"
+        return False, "Failed to save feedback"
+    
+    def add_pbids_feedback(
+        self,
+        sprint_number: int,
+        section: str,
+        submitted_by: str,
+        communication_rating: int,
+        responsiveness_rating: int,
+        collaboration_went_well: str,
+        collaboration_improvement: str
+    ) -> Tuple[bool, str]:
+        """Add feedback from PBIDS team about section collaboration"""
+        
+        # PBIDS users can submit multiple feedbacks for different sections
+        # Check if already submitted for this specific section
+        if self.has_feedback(sprint_number, section, submitted_by, FEEDBACK_TYPE_PBIDS):
+            return False, f"PBIDS feedback already submitted for Sprint {sprint_number} by {submitted_by} for section {section}"
+        
+        # Validate ratings
+        if communication_rating < 1 or communication_rating > 5:
+            return False, "Communication rating must be between 1 and 5"
+        if responsiveness_rating < 1 or responsiveness_rating > 5:
+            return False, "Responsiveness rating must be between 1 and 5"
+        
+        # Generate feedback ID
+        feedback_id = f"FB-PBIDS-{sprint_number}-{section}-{submitted_by}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        
+        # Create new feedback record
+        new_feedback = pd.DataFrame([{
+            'FeedbackId': feedback_id,
+            'SprintNumber': sprint_number,
+            'Section': section,
+            'SubmittedBy': submitted_by,
+            'SubmittedAt': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'FeedbackType': FEEDBACK_TYPE_PBIDS,
+            'OverallSatisfaction': None,
+            'WhatWentWell': None,
+            'WhatDidNotGoWell': None,
+            'CommunicationRating': communication_rating,
+            'ResponsivenessRating': responsiveness_rating,
+            'CollaborationWentWell': collaboration_went_well,
+            'CollaborationImprovement': collaboration_improvement
+        }])
+        
+        self.feedback_df = pd.concat([self.feedback_df, new_feedback], ignore_index=True)
+        
+        if self._save_df(self.feedback_df):
+            return True, "Feedback submitted successfully"
+        return False, "Failed to save feedback"
     
     def add_feedback(
         self,
@@ -120,40 +244,32 @@ class FeedbackStore:
         what_went_well: str,
         what_did_not_go_well: str
     ) -> Tuple[bool, str]:
-        """Add new feedback for a sprint"""
-        
-        # Check if feedback already exists
-        if self.has_feedback(sprint_number, section, submitted_by):
-            return False, f"Feedback already submitted for Sprint {sprint_number} by {submitted_by} for section {section}"
-        
-        # Validate satisfaction rating
-        if overall_satisfaction < 1 or overall_satisfaction > 5:
-            return False, "Overall satisfaction must be between 1 and 5"
-        
-        # Generate feedback ID
-        feedback_id = f"FB-{sprint_number}-{section}-{submitted_by}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        
-        # Create new feedback record
-        new_feedback = pd.DataFrame([{
-            'FeedbackId': feedback_id,
-            'SprintNumber': sprint_number,
-            'Section': section,
-            'SubmittedBy': submitted_by,
-            'SubmittedAt': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'OverallSatisfaction': overall_satisfaction,
-            'WhatWentWell': what_went_well,
-            'WhatDidNotGoWell': what_did_not_go_well
-        }])
-        
-        self.feedback_df = pd.concat([self.feedback_df, new_feedback], ignore_index=True)
-        
-        if self._save_df(self.feedback_df):
-            return True, "Feedback submitted successfully"
-        return False, "Failed to save feedback"
+        """Legacy method - Add section feedback (backward compatibility)"""
+        return self.add_section_feedback(
+            sprint_number, section, submitted_by,
+            overall_satisfaction, what_went_well, what_did_not_go_well
+        )
     
     def get_all_feedback(self) -> pd.DataFrame:
         """Get all feedback records"""
         return self.feedback_df.copy()
+    
+    def get_feedback_by_type(self, feedback_type: str) -> pd.DataFrame:
+        """Get all feedback of a specific type"""
+        if self.feedback_df.empty:
+            return pd.DataFrame(columns=FEEDBACK_COLUMNS)
+        
+        if 'FeedbackType' not in self.feedback_df.columns:
+            return pd.DataFrame(columns=FEEDBACK_COLUMNS)
+        
+        return self.feedback_df[self.feedback_df['FeedbackType'] == feedback_type].copy()
+    
+    def get_feedback_for_section(self, section: str) -> pd.DataFrame:
+        """Get all feedback for a specific section (both directions)"""
+        if self.feedback_df.empty:
+            return pd.DataFrame(columns=FEEDBACK_COLUMNS)
+        
+        return self.feedback_df[self.feedback_df['Section'] == section].copy()
 
 
 # Singleton instance

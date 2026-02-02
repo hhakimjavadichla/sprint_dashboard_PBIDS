@@ -286,3 +286,66 @@ def get_sprint_calendar() -> SprintCalendar:
     if _calendar_instance is None:
         _calendar_instance = SprintCalendar()
     return _calendar_instance
+
+
+def format_sprint_display(sprint_name: str, start_date, end_date, sprint_number: int = None) -> str:
+    """
+    Format sprint display string in standard format: "26-1 (Jan09 - Jan22)"
+    
+    The format is: YY-N where YY is the 2-digit year from start_date and N is the sprint number.
+    
+    Args:
+        sprint_name: Sprint name (used as fallback)
+        start_date: Sprint start date (datetime or string)
+        end_date: Sprint end date (datetime or string)
+        sprint_number: Sprint number (e.g., 1, 2, 3)
+    
+    Returns:
+        Formatted string like "26-1 (Jan09 - Jan22)"
+    """
+    if pd.isna(start_date) or pd.isna(end_date):
+        return str(sprint_name)
+    
+    # Convert to datetime if needed
+    if isinstance(start_date, str):
+        start_date = pd.to_datetime(start_date)
+    if isinstance(end_date, str):
+        end_date = pd.to_datetime(end_date)
+    
+    # Format: MonDD (e.g., Jan09)
+    start_str = start_date.strftime('%b%d')
+    end_str = end_date.strftime('%b%d')
+    
+    # Build sprint identifier: YY-N (e.g., 26-1)
+    if sprint_number is not None and sprint_number > 0:
+        year_str = start_date.strftime('%y')  # 2-digit year
+        sprint_id = f"{year_str}-{sprint_number}"
+    else:
+        # Fallback for special sprints (negative numbers or no sprint_number)
+        sprint_id = sprint_name
+    
+    return f"Sprint {sprint_id} ({start_str} - {end_str})"
+
+
+def get_sprint_display_name(sprint_number: int) -> str:
+    """
+    Get formatted display name for a sprint by number.
+    
+    Args:
+        sprint_number: Sprint number to look up
+    
+    Returns:
+        Formatted string like "26-1 (Jan09 - Jan22)" or "Sprint N" if not found
+    """
+    calendar = get_sprint_calendar()
+    sprint_info = calendar.get_sprint_by_number(sprint_number)
+    
+    if sprint_info is None:
+        return f"Sprint {sprint_number}"
+    
+    return format_sprint_display(
+        sprint_info['SprintName'],
+        sprint_info['SprintStartDt'],
+        sprint_info['SprintEndDt'],
+        sprint_number
+    )

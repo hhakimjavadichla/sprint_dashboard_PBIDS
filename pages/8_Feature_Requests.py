@@ -9,7 +9,7 @@ import base64
 import uuid
 from datetime import datetime
 from pathlib import Path
-from components.auth import require_admin, display_user_info
+from components.auth import require_team_member, display_user_info
 
 # Data file path
 DATA_DIR = Path(__file__).parent.parent / 'data'
@@ -24,6 +24,7 @@ IMPLEMENTATION_STATUS = ['Not Started', 'In Progress', 'Completed', 'On Hold', '
 # Column definitions
 COLUMNS = [
     'RequestID',
+    'Title',
     'Request',
     'Category',
     'RequestDate',
@@ -103,8 +104,8 @@ def get_image_path(relative_path: str) -> Path:
 st.title("Feature Requests & Revisions")
 st.caption("_Track feature requests, revisions, and other changes — Admin Only_")
 
-# Require admin access
-require_admin("Feature Requests")
+# Require team member access (Admin or PIBIDS User)
+require_team_member("Feature Requests")
 display_user_info()
 
 # Page description
@@ -195,8 +196,14 @@ with tab1:
                 'Cancelled': '🚫'
             }.get(impl_status, '📌')
             
-            with st.expander(f"{status_emoji} **{request_id}** | {category} | {impl_emoji} {impl_status}"):
+            title = row.get('Title', '')
+            display_title = title if title else request_id
+            
+            with st.expander(f"{status_emoji} **{display_title}** | {category} | {impl_emoji} {impl_status}"):
                 # Display request details
+                st.markdown(f"**Request ID:** {request_id}")
+                if title:
+                    st.markdown(f"**Title:** {title}")
                 st.markdown(f"**Request:** {row.get('Request', '')}")
                 st.markdown(f"**Requested by:** {row.get('RequestedBy', 'Unknown')} on {row.get('RequestDate', 'Unknown')}")
                 
@@ -239,6 +246,9 @@ with tab1:
                 col1, col2 = st.columns(2)
                 with col1:
                     impl_date = row.get('ImplementationDate', '')
+                    # Handle nan/empty values - default to today
+                    if not impl_date or str(impl_date).lower() == 'nan' or str(impl_date).strip() == '':
+                        impl_date = datetime.now().strftime('%Y-%m-%d')
                     new_impl_date = st.text_input(
                         "Implementation Date",
                         value=impl_date,
@@ -254,17 +264,39 @@ with tab1:
                         key=f"confirmed_{request_id}"
                     )
                 
-                # Save button
-                if st.button("💾 Save Changes", key=f"save_{request_id}"):
-                    requests_df.loc[idx, 'Status'] = new_status
-                    requests_df.loc[idx, 'ImplementationStatus'] = new_impl_status
-                    requests_df.loc[idx, 'Response'] = new_response
-                    requests_df.loc[idx, 'ImplementationDate'] = new_impl_date
-                    requests_df.loc[idx, 'ConfirmImplemented'] = 'Yes' if new_confirmed else 'No'
-                    
-                    save_requests(requests_df)
-                    st.success("Changes saved!")
-                    st.rerun()
+                # Save and Delete buttons
+                btn_col1, btn_col2 = st.columns([3, 1])
+                with btn_col1:
+                    if st.button("💾 Save Changes", key=f"save_{request_id}"):
+                        requests_df.loc[idx, 'Status'] = new_status
+                        requests_df.loc[idx, 'ImplementationStatus'] = new_impl_status
+                        requests_df.loc[idx, 'Response'] = new_response
+                        requests_df.loc[idx, 'ImplementationDate'] = new_impl_date
+                        requests_df.loc[idx, 'ConfirmImplemented'] = 'Yes' if new_confirmed else 'No'
+                        
+                        save_requests(requests_df)
+                        st.success("Changes saved!")
+                        st.rerun()
+                
+                with btn_col2:
+                    if st.button("🗑️ Delete", key=f"delete_{request_id}", type="secondary"):
+                        st.session_state[f"confirm_delete_{request_id}"] = True
+                
+                # Confirmation dialog for delete
+                if st.session_state.get(f"confirm_delete_{request_id}", False):
+                    st.warning(f"Are you sure you want to delete request **{request_id}**?")
+                    confirm_col1, confirm_col2 = st.columns(2)
+                    with confirm_col1:
+                        if st.button("✅ Yes, Delete", key=f"confirm_yes_{request_id}"):
+                            requests_df = requests_df.drop(idx)
+                            save_requests(requests_df)
+                            del st.session_state[f"confirm_delete_{request_id}"]
+                            st.success("Request deleted!")
+                            st.rerun()
+                    with confirm_col2:
+                        if st.button("❌ Cancel", key=f"confirm_no_{request_id}"):
+                            del st.session_state[f"confirm_delete_{request_id}"]
+                            st.rerun()
 
 # ============================================================================
 # NEW REQUEST TAB
@@ -275,6 +307,12 @@ with tab2:
     # Initialize session state for pasted image
     if 'pasted_image_data' not in st.session_state:
         st.session_state.pasted_image_data = None
+    
+    request_title = st.text_input(
+        "Title *",
+        placeholder="Brief title for the request...",
+        key="new_request_title"
+    )
     
     request_text = st.text_area(
         "Request *",
@@ -381,7 +419,9 @@ with tab2:
     st.divider()
     
     if st.button("📤 Submit Request", type="primary", use_container_width=True):
-        if not request_text.strip():
+        if not request_title.strip():
+            st.error("Please enter a title for the request")
+        elif not request_text.strip():
             st.error("Please enter a request description")
         else:
             # Generate request ID first
@@ -395,6 +435,7 @@ with tab2:
             # Create new request
             new_request = {
                 'RequestID': request_id,
+                'Title': request_title.strip(),
                 'Request': request_text.strip(),
                 'Category': category,
                 'RequestDate': datetime.now().strftime('%Y-%m-%d'),
@@ -402,7 +443,7 @@ with tab2:
                 'Status': status,
                 'Response': '',
                 'ImplementationStatus': 'Not Started',
-                'ImplementationDate': '',
+                'ImplementationDate': datetime.now().strftime('%Y-%m-%d'),
                 'ConfirmImplemented': 'No',
                 'ImagePath': image_path
             }

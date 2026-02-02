@@ -22,6 +22,7 @@ from modules.sqlite_store import is_sqlite_enabled, load_task_view, save_tasks
 from utils.name_mapper import apply_name_mapping, get_display_name
 from modules.section_filter import filter_by_team_members
 from utils.constants import IMPORT_THRESHOLD_DATE, OPEN_TASK_STATUSES, CLOSED_TASK_STATUSES
+from modules.worklog_store import get_worklog_store
 
 # Path to all tasks store (legacy CSV mode)
 ALL_TASKS_PATH = os.path.join(
@@ -101,6 +102,7 @@ DASHBOARD_OWNED_FIELDS = [
     'DependenciesLead',     # Who is leading dependency resolution
     'DependencySecured',    # Whether dependencies are secured
     'Comments',             # Admin/section comments
+    'NonCompletionReason',  # Reason why task was not completed in sprint
     'StatusUpdateDt',       # When status was manually updated in dashboard
 ]
 
@@ -121,12 +123,13 @@ EDITABLE_FIELDS = {
     'DependenciesLead': {'type': 'str', 'nullable': True},
     'DependencySecured': {'type': 'str', 'nullable': True, 'options': ['', 'Yes', 'Pending', 'No']},
     'Comments': {'type': 'str', 'nullable': True},
+    'NonCompletionReason': {'type': 'str', 'nullable': True},
     'CustomerPriority': {'type': 'int', 'nullable': True, 'options': [0, 1, 2, 3, 4, 5]},
     'HoursEstimated': {'type': 'float', 'nullable': True},
 }
 
 # String columns that need to be converted at load time
-STRING_COLUMNS = ['DependencyOn', 'DependenciesLead', 'DependencySecured', 'Comments', 'GoalType', 'SprintsAssigned']
+STRING_COLUMNS = ['DependencyOn', 'DependenciesLead', 'DependencySecured', 'Comments', 'NonCompletionReason', 'GoalType', 'SprintsAssigned']
 
 
 class TaskStore:
@@ -407,6 +410,8 @@ class TaskStore:
             df['DependencySecured'] = ''
         if 'Comments' not in df.columns:
             df['Comments'] = ''
+        if 'NonCompletionReason' not in df.columns:
+            df['NonCompletionReason'] = ''
         
         # Convert string columns
         for col in STRING_COLUMNS:
@@ -765,6 +770,7 @@ class TaskStore:
                 new_task['DependenciesLead'] = None
                 new_task['DependencySecured'] = None
                 new_task['Comments'] = None
+                new_task['NonCompletionReason'] = None
                 
                 # Add to store
                 if self.tasks_df.empty:
@@ -840,6 +846,9 @@ class TaskStore:
             # Calculate DaysOpen (days since task was assigned)
             result = self._calculate_days_open(result)
             
+            # Calculate hours from worklog (sprint-specific)
+            result = self._calculate_hours_from_worklog(result, sprint_number)
+            
             # Filter by valid team members
             result = filter_by_team_members(result, 'AssignedTo')
             
@@ -871,6 +880,42 @@ class TaskStore:
             )
         else:
             df['DaysOpen'] = 0
+        
+        return df
+    
+    def _calculate_hours_from_worklog(self, df: pd.DataFrame, sprint_number: int = None) -> pd.DataFrame:
+        """
+        Calculate TaskHoursSpent and TicketHoursSpent from worklog entries.
+        
+        Args:
+            df: DataFrame of tasks
+            sprint_number: If provided, only count hours logged during this sprint.
+                          If None, count all hours (total).
+        
+        Returns:
+            DataFrame with updated TaskHoursSpent and TicketHoursSpent columns
+        """
+        if df.empty:
+            return df
+        
+        worklog_store = get_worklog_store()
+        
+        # Get task hours from worklog
+        task_hours = worklog_store.get_task_hours_spent(sprint_number)
+        
+        # Build task-to-ticket mapping
+        task_to_ticket = {}
+        if 'TaskNum' in df.columns and 'TicketNum' in df.columns:
+            task_to_ticket = dict(zip(df['TaskNum'].astype(str), df['TicketNum'].astype(str)))
+        
+        # Get ticket hours from worklog
+        ticket_hours = worklog_store.get_ticket_hours_spent(task_to_ticket, sprint_number)
+        
+        # Apply task hours
+        df['TaskHoursSpent'] = df['TaskNum'].astype(str).map(task_hours).fillna(0.0)
+        
+        # Apply ticket hours
+        df['TicketHoursSpent'] = df['TicketNum'].astype(str).map(ticket_hours).fillna(0.0)
         
         return df
     
@@ -978,6 +1023,9 @@ class TaskStore:
         if not backlog_tasks.empty:
             # Calculate DaysOpen
             backlog_tasks = self._calculate_days_open(backlog_tasks)
+            
+            # Calculate hours from worklog (total - no sprint filter)
+            backlog_tasks = self._calculate_hours_from_worklog(backlog_tasks, sprint_number=None)
             
             # Filter by valid team members
             backlog_tasks = filter_by_team_members(backlog_tasks, 'AssignedTo')

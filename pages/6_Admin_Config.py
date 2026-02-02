@@ -7,7 +7,7 @@ import pandas as pd
 import toml
 from pathlib import Path
 from datetime import datetime, timedelta
-from modules.sprint_calendar import get_sprint_calendar
+from modules.sprint_calendar import get_sprint_calendar, format_sprint_display
 from modules.user_store import get_user_store, reset_user_store, VALID_ROLES
 from modules.offdays_store import get_offdays_store, reset_offdays_store
 from components.auth import require_admin, display_user_info
@@ -42,20 +42,20 @@ with tab1:
     if all_sprints.empty:
         st.info("No sprints defined yet")
     else:
-        # Format dates for display
+        # Format sprints with combined name column
         display_sprints = all_sprints.copy()
-        display_sprints['SprintStartDt'] = pd.to_datetime(display_sprints['SprintStartDt']).dt.strftime('%m/%d/%Y')
-        display_sprints['SprintEndDt'] = pd.to_datetime(display_sprints['SprintEndDt']).dt.strftime('%m/%d/%Y')
+        display_sprints['Sprint'] = display_sprints.apply(
+            lambda row: format_sprint_display(row['SprintName'], row['SprintStartDt'], row['SprintEndDt'], int(row['SprintNumber'])),
+            axis=1
+        )
         
         st.dataframe(
-            display_sprints[['SprintNumber', 'SprintName', 'SprintStartDt', 'SprintEndDt']],
+            display_sprints[['SprintNumber', 'Sprint']],
             use_container_width=True,
             hide_index=True,
             column_config={
                 'SprintNumber': st.column_config.NumberColumn('Sprint #', format='%d'),
-                'SprintName': 'Sprint Name',
-                'SprintStartDt': 'Start Date',
-                'SprintEndDt': 'End Date'
+                'Sprint': 'Sprint'
             }
         )
     
@@ -121,7 +121,12 @@ with tab1:
         sprint_to_edit = st.selectbox(
             "Select Sprint to Edit",
             options=all_sprints['SprintNumber'].tolist(),
-            format_func=lambda x: f"Sprint {x}: {all_sprints[all_sprints['SprintNumber']==x]['SprintName'].iloc[0]}"
+            format_func=lambda x: format_sprint_display(
+                all_sprints[all_sprints['SprintNumber']==x]['SprintName'].iloc[0],
+                all_sprints[all_sprints['SprintNumber']==x]['SprintStartDt'].iloc[0],
+                all_sprints[all_sprints['SprintNumber']==x]['SprintEndDt'].iloc[0],
+                int(x)
+            )
         )
         
         if sprint_to_edit is not None:
@@ -587,7 +592,12 @@ with tab4:
             "Select Sprint",
             options=sprint_options,
             index=default_sprint_idx,
-            format_func=lambda x: f"Sprint {x} ({all_sprints[all_sprints['SprintNumber']==x]['SprintName'].iloc[0]})"
+            format_func=lambda x: format_sprint_display(
+                all_sprints[all_sprints['SprintNumber']==x]['SprintName'].iloc[0],
+                all_sprints[all_sprints['SprintNumber']==x]['SprintStartDt'].iloc[0],
+                all_sprints[all_sprints['SprintNumber']==x]['SprintEndDt'].iloc[0],
+                int(x)
+            )
         )
         
         # Get sprint date range
@@ -595,7 +605,6 @@ with tab4:
         if sprint_info:
             sprint_start = pd.to_datetime(sprint_info['SprintStartDt'])
             sprint_end = pd.to_datetime(sprint_info['SprintEndDt'])
-            st.info(f"**Sprint {selected_sprint}**: {sprint_info['SprintStartDt']} - {sprint_info['SprintEndDt']}")
             
             # Generate list of dates in the sprint (weekdays only)
             sprint_dates = pd.date_range(start=sprint_start, end=sprint_end, freq='B')  # Business days

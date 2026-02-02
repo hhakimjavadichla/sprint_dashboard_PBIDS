@@ -10,7 +10,7 @@ from datetime import datetime
 from modules.task_store import get_task_store
 from modules.sprint_calendar import get_sprint_calendar
 from modules.section_filter import exclude_forever_tickets, exclude_ad_tickets
-from components.auth import require_admin, display_user_info
+from components.auth import require_team_member, display_user_info, is_admin
 from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, COLUMN_DESCRIPTIONS, display_column_help, get_backlog_column_order, clean_subject_column
 from utils.exporters import export_to_excel
 from components.metrics_dashboard import display_ticket_task_metrics
@@ -18,14 +18,16 @@ from components.metrics_dashboard import display_ticket_task_metrics
 # Apply custom styles
 apply_grid_styles()
 
-# Require admin access
-if not require_admin():
-    st.stop()
+# Require team member access (Admin or PIBIDS User)
+require_team_member("Backlog Assign")
 
 # Display user info
 display_user_info()
 
 st.title("Backlog Assign")
+
+# Check if user can edit (Admin only)
+can_edit_backlog = is_admin()
 
 # Get task store and sprint calendar
 task_store = get_task_store()
@@ -43,14 +45,22 @@ current_sprint_num = current_sprint['SprintNumber'] if current_sprint else 1
 future_sprints = all_sprints[all_sprints['SprintNumber'] >= current_sprint_num].copy()
 
 with st.expander("ℹ️ How to Use This Page", expanded=False):
-    st.markdown("""
-    All **open tasks** appear here. As admin, you can:
-    - **Click checkbox** to select tasks for sprint assignment
-    - Assign tasks to **current or future sprints**
-    - Tasks can be assigned to multiple sprints over time
-    - Track sprint assignment history in the **Sprints Assigned** column
-    - Completed tasks are automatically moved to the **Completed Tasks** page
-    """)
+    if can_edit_backlog:
+        st.markdown("""
+        All **open tasks** appear here. As admin, you can:
+        - **Click checkbox** to select tasks for sprint assignment
+        - Assign tasks to **current or future sprints**
+        - Tasks can be assigned to multiple sprints over time
+        - Track sprint assignment history in the **Sprints Assigned** column
+        - Completed tasks are automatically moved to the **Completed Tasks** page
+        """)
+    else:
+        st.markdown("""
+        All **open tasks** appear here. You have **read-only access**.
+        - View all backlog tasks and their current status
+        - Track sprint assignment history in the **Sprints Assigned** column
+        - Only Admins can assign tasks to sprints
+        """)
 
 # Forever ticket filter
 col1, col2, col3, col4 = st.columns(4)
@@ -217,6 +227,34 @@ else:
     DEPENDENCY_SECURED_VALUES = ['', 'Yes', 'Pending', 'No']
     GOAL_TYPE_VALUES = ['', 'Mandatory', 'Stretch']
     
+    # Define column view presets for Backlog Assign
+    COLUMN_VIEWS = {
+        'All Columns': None,  # None means show all columns
+        'Quick Assign': ['SprintsAssigned', 'TaskNum', 'Subject', 'AssignedTo', 'Section', 
+                         'TicketType', 'DaysOpen', 'FinalPriority'],
+        'Priority Review': ['SprintsAssigned', 'TaskNum', 'Subject', 'AssignedTo', 
+                           'CustomerPriority', 'FinalPriority', 'GoalType', 'DaysOpen'],
+        'Dependencies': ['SprintsAssigned', 'TaskNum', 'Subject', 'AssignedTo', 
+                        'DependencyOn', 'DependenciesLead', 'DependencySecured', 'Comments']
+    }
+    
+    # View selector
+    selected_view = st.radio(
+        "Column View: Select a preset to show only relevant columns for specific tasks",
+        options=list(COLUMN_VIEWS.keys()),
+        horizontal=True,
+        key="backlog_assign_view_selector"
+    )
+    
+    # Get columns to show based on selected view
+    view_columns = COLUMN_VIEWS[selected_view]
+    
+    # Helper function to check if column should be hidden
+    def should_hide(col_name):
+        if view_columns is None:  # All Columns view
+            return False
+        return col_name not in view_columns
+    
     # Configure AgGrid with row selection
     gb = GridOptionsBuilder.from_dataframe(grid_df)
     gb.configure_default_column(resizable=True, filterable=True, sortable=True)
@@ -229,82 +267,83 @@ else:
         pre_selected_rows=[]
     )
     
-    # Configure first column with checkbox
+    # Configure first column with checkbox (SprintsAssigned is always visible for assignment)
     gb.configure_column(
         'SprintsAssigned', 
         header_name='Sprints Assigned', 
         width=130,
         checkboxSelection=True,
-        headerCheckboxSelection=True
+        headerCheckboxSelection=True,
+        hide=should_hide('SprintsAssigned')
     )
     
-    # Hidden columns
+    # Hidden columns (always hidden)
     gb.configure_column('_TicketGroup', hide=True)
     gb.configure_column('_IsMultiTask', hide=True)
     
     # Ticket/Task info columns (same as Sprint Planning)
     gb.configure_column('TicketNum', header_name='TicketNum', width=COLUMN_WIDTHS['TicketNum'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketNum', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketNum', ''), hide=should_hide('TicketNum'))
     gb.configure_column('TaskCount', header_name='Task#', width=COLUMN_WIDTHS['TaskCount'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskCount', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskCount', ''), hide=should_hide('TaskCount'))
     gb.configure_column('TicketType', header_name='TicketType', width=COLUMN_WIDTHS['TicketType'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketType', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketType', ''), hide=should_hide('TicketType'))
     gb.configure_column('Section', header_name='Section', width=COLUMN_WIDTHS['Section'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('Section', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('Section', ''), hide=should_hide('Section'))
     gb.configure_column('CustomerName', header_name='CustomerName', width=COLUMN_WIDTHS['CustomerName'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('CustomerName', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('CustomerName', ''), hide=should_hide('CustomerName'))
     gb.configure_column('TaskNum', header_name='TaskNum', width=COLUMN_WIDTHS['TaskNum'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskNum', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskNum', ''), hide=should_hide('TaskNum'))
     gb.configure_column('TaskStatus', header_name='TaskStatus', width=COLUMN_WIDTHS.get('TaskStatus', 100),
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('Status', ''), )
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('Status', ''), hide=should_hide('TaskStatus'))
     gb.configure_column('TicketStatus', header_name='TicketStatus', width=COLUMN_WIDTHS.get('TicketStatus', 100),
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketStatus', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketStatus', ''), hide=should_hide('TicketStatus'))
     gb.configure_column('AssignedTo', header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('AssignedTo', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('AssignedTo', ''), hide=should_hide('AssignedTo'))
     gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS.get('Subject', 200),
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('Subject', ''), tooltipField='Subject')
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('Subject', ''), tooltipField='Subject', hide=should_hide('Subject'))
     gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=COLUMN_WIDTHS['TicketCreatedDt'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketCreatedDt', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketCreatedDt', ''), hide=should_hide('TicketCreatedDt'))
     gb.configure_column('TaskCreatedDt', header_name='TaskCreatedDt', width=COLUMN_WIDTHS['TaskCreatedDt'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskCreatedDt', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskCreatedDt', ''), hide=should_hide('TaskCreatedDt'))
     
-    # Metrics and planning fields (read-only in backlog, same as Sprint Planning)
+    # Metrics and planning fields
     gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('DaysOpen', ''), )
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('DaysOpen', ''), hide=should_hide('DaysOpen'))
     gb.configure_column('CustomerPriority', header_name='CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('CustomerPriority', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('CustomerPriority', ''), hide=should_hide('CustomerPriority'))
     gb.configure_column('FinalPriority', header_name='✏️ FinalPriority', width=COLUMN_WIDTHS['FinalPriority'], editable=True,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('FinalPriority', ''),
                         cellEditor='agSelectCellEditor',
-                        cellEditorParams={'values': PRIORITY_VALUES})
+                        cellEditorParams={'values': PRIORITY_VALUES}, hide=should_hide('FinalPriority'))
     gb.configure_column('GoalType', header_name='✏️ GoalType', width=COLUMN_WIDTHS['GoalType'], editable=True,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('GoalType', ''),
                         cellEditor='agSelectCellEditor',
-                        cellEditorParams={'values': GOAL_TYPE_VALUES})
+                        cellEditorParams={'values': GOAL_TYPE_VALUES}, hide=should_hide('GoalType'))
     gb.configure_column('DependencyOn', header_name='✏️ Dependency', width=COLUMN_WIDTHS['DependencyOn'], editable=True,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('DependencyOn', ''),
                         cellEditor='agSelectCellEditor',
-                        cellEditorParams={'values': DEPENDENCY_VALUES})
+                        cellEditorParams={'values': DEPENDENCY_VALUES}, hide=should_hide('DependencyOn'))
     gb.configure_column('DependenciesLead', header_name='✏️ DependencyLead(s)', width=COLUMN_WIDTHS['DependenciesLead'], editable=True,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('DependenciesLead', ''), tooltipField='DependenciesLead',
                         cellEditor='agLargeTextCellEditor',
                         cellEditorPopup=True,
-                        cellEditorParams={'maxLength': 1000, 'rows': 5, 'cols': 40})
+                        cellEditorParams={'maxLength': 1000, 'rows': 5, 'cols': 40}, hide=should_hide('DependenciesLead'))
     gb.configure_column('DependencySecured', header_name='✏️ DependencySecured', width=COLUMN_WIDTHS['DependencySecured'], editable=True,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('DependencySecured', ''),
                         cellEditor='agSelectCellEditor',
-                        cellEditorParams={'values': DEPENDENCY_SECURED_VALUES})
+                        cellEditorParams={'values': DEPENDENCY_SECURED_VALUES}, hide=should_hide('DependencySecured'))
     gb.configure_column('Comments', header_name='✏️ Comments', width=COLUMN_WIDTHS['Comments'], editable=True,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('Comments', ''), tooltipField='Comments',
                         cellEditor='agLargeTextCellEditor',
                         cellEditorPopup=True,
-                        cellEditorParams={'maxLength': 2000, 'rows': 5, 'cols': 50})
+                        cellEditorParams={'maxLength': 2000, 'rows': 5, 'cols': 50}, hide=should_hide('Comments'))
     gb.configure_column('HoursEstimated', header_name='HoursEstimated', width=COLUMN_WIDTHS['HoursEstimated'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('HoursEstimated', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('HoursEstimated', ''), hide=should_hide('HoursEstimated'))
     gb.configure_column('TaskHoursSpent', header_name='TaskHoursSpent', width=COLUMN_WIDTHS['TaskHoursSpent'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskHoursSpent', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskHoursSpent', ''), hide=should_hide('TaskHoursSpent'))
     gb.configure_column('TicketHoursSpent', header_name='TicketHoursSpent', width=COLUMN_WIDTHS['TicketHoursSpent'],
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketHoursSpent', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketHoursSpent', ''), hide=should_hide('TicketHoursSpent'))
     
     # Show all rows (no pagination) - typically fewer than 200 open tasks
     gb.configure_pagination(enabled=False)
@@ -355,9 +394,11 @@ else:
     else:
         selected_df = selected_rows if selected_rows is not None else pd.DataFrame()
     
-    # Populate assignment UI in the container above the table
+    # Populate assignment UI in the container above the table (Admin only)
     with assignment_container:
-        if selected_df.empty or len(selected_df) == 0:
+        if not can_edit_backlog:
+            st.info("🔒 **Read-only mode.** Only Admins can assign tasks to sprints.")
+        elif selected_df.empty or len(selected_df) == 0:
             st.info("👆 Select tasks from the table below to assign to the target sprint.")
         else:
             num_selected = len(selected_df)
@@ -395,40 +436,41 @@ else:
             else:
                 st.warning("Please select a target sprint to assign tasks.")
     
-    # Save Changes button for editable fields
-    st.markdown("#### Save Edits")
-    col_save1, col_save2 = st.columns([2, 6])
-    
-    with col_save1:
-        if st.button("💾 Save Changes", type="primary", help="Save all edits to FinalPriority, GoalType, Dependencies, and Comments"):
-            editable_fields = ['FinalPriority', 'GoalType', 'DependencyOn', 'DependenciesLead', 'DependencySecured', 'Comments']
-            
-            if 'TaskNum' not in edited_df.columns:
-                st.error("❌ TaskNum column not found in grid data.")
-            else:
-                # Build updates list from edited grid data
-                updates = []
-                for _, row in edited_df.iterrows():
-                    if pd.notna(row.get('TaskNum')):
-                        update = {'TaskNum': row['TaskNum']}
-                        for field in editable_fields:
-                            if field in row.index:
-                                update[field] = row[field]
-                        updates.append(update)
+    # Save Changes button for editable fields (Admin only)
+    if can_edit_backlog:
+        st.markdown("#### Save Edits")
+        col_save1, col_save2 = st.columns([2, 6])
+        
+        with col_save1:
+            if st.button("💾 Save Changes", type="primary", help="Save all edits to FinalPriority, GoalType, Dependencies, and Comments"):
+                editable_fields = ['FinalPriority', 'GoalType', 'DependencyOn', 'DependenciesLead', 'DependencySecured', 'Comments']
                 
-                # Use centralized update method
-                success, errors = task_store.update_tasks(updates)
-                
-                if success > 0:
-                    st.toast(f"✅ Updated {success} task(s)", icon="✅")
-                    st.rerun()
-                elif errors:
-                    st.error(f"❌ Errors: {', '.join(errors[:3])}")
+                if 'TaskNum' not in edited_df.columns:
+                    st.error("❌ TaskNum column not found in grid data.")
                 else:
-                    st.info("No changes to save")
-    
-    with col_save2:
-        st.caption("💡 Edit cells by double-clicking, then click 'Save Changes' to persist your edits.")
+                    # Build updates list from edited grid data
+                    updates = []
+                    for _, row in edited_df.iterrows():
+                        if pd.notna(row.get('TaskNum')):
+                            update = {'TaskNum': row['TaskNum']}
+                            for field in editable_fields:
+                                if field in row.index:
+                                    update[field] = row[field]
+                            updates.append(update)
+                    
+                    # Use centralized update method
+                    success, errors = task_store.update_tasks(updates)
+                    
+                    if success > 0:
+                        st.toast(f"✅ Updated {success} task(s)", icon="✅")
+                        st.rerun()
+                    elif errors:
+                        st.error(f"❌ Errors: {', '.join(errors[:3])}")
+                    else:
+                        st.info("No changes to save")
+        
+        with col_save2:
+            st.caption("💡 Edit cells by double-clicking, then click 'Save Changes' to persist your edits.")
     
     st.divider()
     

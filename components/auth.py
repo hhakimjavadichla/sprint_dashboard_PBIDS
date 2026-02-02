@@ -47,12 +47,51 @@ def is_admin() -> bool:
 
 def is_pbids_user() -> bool:
     """
-    Check if current user is a PIBIDS User (read-only access)
+    Check if current user is a PIBIDS User (Team Member - full edit access)
     
     Returns:
         True if user is PIBIDS User
     """
     return get_user_role() == 'PIBIDS User'
+
+
+def is_team_member() -> bool:
+    """
+    Check if current user is a Team Member (Admin or PIBIDS User)
+    Team Members have elevated access to sprint planning features.
+    
+    Access Hierarchy:
+    1. Admin (top)
+    2. Team Member (PIBIDS User)
+    3. Section Manager
+    4. Section User (bottom)
+    
+    Returns:
+        True if user is Admin or PIBIDS User
+    """
+    return get_user_role() in ['Admin', 'PIBIDS User']
+
+
+def can_edit_sprint_tasks() -> bool:
+    """
+    Check if user can edit sprint tasks (HoursEstimated, GoalType, etc.)
+    Only Admin and PIBIDS Users (Team Members) can edit.
+    
+    Returns:
+        True if user can edit sprint tasks
+    """
+    return is_team_member()
+
+
+def can_view_internal_pages() -> bool:
+    """
+    Check if user can view internal pages (Worklog, Reports, Feature Request)
+    Only Admin and PIBIDS Users can view these pages.
+    
+    Returns:
+        True if user can view internal pages
+    """
+    return is_team_member()
 
 
 def is_section_manager() -> bool:
@@ -78,15 +117,18 @@ def is_section_user() -> bool:
 def can_edit_section() -> bool:
     """
     Check if current user can edit section data (CustomerPriority, etc.)
-    Section Managers and Section Users can edit their section data.
-    Admins can edit all sections.
-    PIBIDS Users cannot edit.
+    
+    Access Hierarchy for editing:
+    - Admin: Can edit all sections
+    - PIBIDS User (Team Member): Can edit all sections
+    - Section Manager: Can edit their own section
+    - Section User: Can edit their own section
     
     Returns:
         True if user can edit section data
     """
     role = get_user_role()
-    return role in ['Admin', 'Section Manager', 'Section User']
+    return role in ['Admin', 'PIBIDS User', 'Section Manager', 'Section User']
 
 
 def login(username: str, password: str) -> Tuple[bool, str]:
@@ -178,6 +220,26 @@ def require_admin(page_name: str = "page"):
     if not is_admin():
         st.error(f"⛔ Admin access required for {page_name}")
         st.info("This page is restricted to administrators only")
+        st.stop()
+    
+    return True
+
+
+def require_team_member(page_name: str = "page"):
+    """
+    Require Team Member access (Admin or PIBIDS User) for a page
+    
+    Args:
+        page_name: Name of page for error message
+    
+    Returns:
+        True if team member, stops execution if not
+    """
+    require_auth(page_name)
+    
+    if not is_team_member():
+        st.error(f"⛔ Team Member access required for {page_name}")
+        st.info("This page is restricted to PIBIDS team members only")
         st.stop()
     
     return True

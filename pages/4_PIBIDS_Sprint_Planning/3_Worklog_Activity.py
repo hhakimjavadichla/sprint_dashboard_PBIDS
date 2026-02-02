@@ -9,10 +9,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 from st_aggrid import AgGrid, GridOptionsBuilder
 from modules.worklog_store import get_worklog_store
-from modules.sprint_calendar import get_sprint_calendar
+from modules.sprint_calendar import get_sprint_calendar, get_sprint_display_name
 from modules.section_filter import load_valid_team_members
 from utils.name_mapper import apply_name_mapping
-from components.auth import require_admin, display_user_info
+from components.auth import require_team_member, display_user_info
 from utils.grid_styles import apply_grid_styles, get_custom_css
 from utils.exporters import export_to_excel, export_to_csv
 
@@ -21,8 +21,8 @@ apply_grid_styles()
 st.title("Worklog Activity")
 st.caption("_Team member activity tracking based on iTrack worklog data — PIBIDS Team_")
 
-# Require admin access
-require_admin("Worklog Activity")
+# Require team member access (Admin or PIBIDS User) - read only
+require_team_member("Worklog Activity")
 display_user_info()
 
 # Load data
@@ -44,27 +44,6 @@ if all_worklogs.empty:
     st.page_link("pages/7_Data_Source.py", label="Upload Worklog Data")
     st.stop()
 
-# Summary stats
-sprint_totals = worklog_store.get_sprint_totals()
-
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.metric("📝 Total Log Entries", len(all_worklogs))
-with col2:
-    total_minutes = all_worklogs['MinutesSpent'].sum() if 'MinutesSpent' in all_worklogs.columns else 0
-    total_hours = total_minutes / 60
-    st.metric("⏱️ Total Hours Logged", f"{total_hours:.1f}")
-with col3:
-    unique_users = all_worklogs['Owner'].nunique() if 'Owner' in all_worklogs.columns else 0
-    st.metric("👥 Team Members", unique_users)
-with col4:
-    if current_sprint:
-        st.metric("🎯 Current Sprint", f"Sprint {current_sprint['SprintNumber']}")
-    else:
-        st.metric("🎯 Current Sprint", "N/A")
-
-st.divider()
-
 # Sprint Item only filter - filter to only tasks assigned to any sprint
 sprint_items_only = st.checkbox(
     "Sprint Items Only",
@@ -81,9 +60,6 @@ if sprint_items_only:
             (all_worklogs['SprintsAssigned'].astype(str).str.strip() != '')
         ].copy()
 
-# Daily Activity section (removed By User, Sprint Summary, Raw Data tabs)
-st.subheader("Daily Activity by User")
-st.caption("Shows log frequency and minutes spent per user per day")
 
 # Derive sprint number from LogDate using sprint calendar
 def get_sprint_for_log_date(log_date, calendar):
@@ -129,7 +105,7 @@ if date_mode == "Sprint":
                 "Select Sprint",
                 options=available_sprints,
                 index=available_sprints.index(default_sprint) if default_sprint in available_sprints else 0,
-                format_func=lambda x: f"Sprint {int(x)}"
+                format_func=lambda x: get_sprint_display_name(int(x))
             )
         else:
             selected_sprint = None

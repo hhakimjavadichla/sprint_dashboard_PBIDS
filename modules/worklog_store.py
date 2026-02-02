@@ -418,6 +418,59 @@ class WorklogStore:
         return totals.sort_values('SprintNumber', ascending=False)
 
 
+    def get_task_hours_spent(self, sprint_number: int = None) -> Dict[str, float]:
+        """
+        Get total hours spent per task from worklog entries.
+        
+        Args:
+            sprint_number: If provided, only count hours logged during this sprint.
+                          If None, count all hours (total).
+        
+        Returns:
+            Dict mapping TaskNum -> total hours spent
+        """
+        if self.worklog_df.empty:
+            return {}
+        
+        df = self.worklog_df.copy()
+        
+        # Filter by sprint if specified
+        if sprint_number is not None:
+            df = df[df['SprintNumber'] == sprint_number]
+        
+        if df.empty:
+            return {}
+        
+        # Aggregate minutes by task
+        task_minutes = df.groupby('TaskNum')['MinutesSpent'].sum()
+        
+        # Convert to hours
+        return {task_num: minutes / 60.0 for task_num, minutes in task_minutes.items()}
+    
+    def get_ticket_hours_spent(self, task_to_ticket: Dict[str, str], sprint_number: int = None) -> Dict[str, float]:
+        """
+        Get total hours spent per ticket from worklog entries.
+        
+        Args:
+            task_to_ticket: Dict mapping TaskNum -> TicketNum
+            sprint_number: If provided, only count hours logged during this sprint.
+                          If None, count all hours (total).
+        
+        Returns:
+            Dict mapping TicketNum -> total hours spent
+        """
+        task_hours = self.get_task_hours_spent(sprint_number)
+        
+        # Aggregate by ticket
+        ticket_hours: Dict[str, float] = {}
+        for task_num, hours in task_hours.items():
+            ticket_num = task_to_ticket.get(task_num)
+            if ticket_num:
+                ticket_hours[ticket_num] = ticket_hours.get(ticket_num, 0.0) + hours
+        
+        return ticket_hours
+
+
 # Singleton instance
 _worklog_store = None
 

@@ -116,7 +116,7 @@ def sync_from_snowflake(db_path: Optional[str] = None) -> dict:
         existing_annotations = pd.read_sql_query(
             """SELECT task_num, sprints_assigned, customer_priority, final_priority,
                       goal_type, hours_estimated, dependency_on, dependencies_lead,
-                      dependency_secured, comments, status_update_dt
+                      dependency_secured, comments, non_completion_reason, status_update_dt
                FROM dashboard_task_annotations""", conn
         )
         annotations_dict = {}
@@ -576,6 +576,7 @@ def _upsert_tasks(conn, tasks_df: pd.DataFrame) -> None:
                 _clean_value(row.get("DependenciesLead")),
                 _clean_value(row.get("DependencySecured")),
                 _clean_value(row.get("Comments")),
+                _clean_value(row.get("NonCompletionReason")),
                 _to_datetime_str(row.get("StatusUpdateDt")),
                 datetime.utcnow().isoformat(),
             )
@@ -612,8 +613,8 @@ def _upsert_tasks(conn, tasks_df: pd.DataFrame) -> None:
         INSERT OR REPLACE INTO dashboard_task_annotations (
           task_num, sprints_assigned, customer_priority, final_priority,
           goal_type, hours_estimated, dependency_on, dependencies_lead,
-          dependency_secured, comments, status_update_dt, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          dependency_secured, comments, non_completion_reason, status_update_dt, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         annotation_rows,
     )
@@ -641,7 +642,7 @@ def load_users(db_path: Optional[str] = None) -> pd.DataFrame:
     conn = connect(path)
     initialize_db(conn)
     try:
-        return pd.read_sql_query(
+        df = pd.read_sql_query(
             """
             SELECT
               username AS Username,
@@ -654,6 +655,12 @@ def load_users(db_path: Optional[str] = None) -> pd.DataFrame:
             """,
             conn,
         )
+        # Convert Active column to boolean (SQLite stores as 0/1)
+        if 'Active' in df.columns:
+            df['Active'] = df['Active'].apply(
+                lambda x: x in [1, '1', True, 'true', 'True', 'yes', 'Yes'] if pd.notna(x) else True
+            )
+        return df
     finally:
         conn.close()
 

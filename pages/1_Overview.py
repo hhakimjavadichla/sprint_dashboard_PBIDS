@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 from modules.task_store import get_task_store, CLOSED_STATUSES
 from modules.section_filter import exclude_forever_tickets, exclude_ad_tickets
-from modules.sprint_calendar import get_sprint_calendar
+from modules.sprint_calendar import get_sprint_calendar, format_sprint_display
 from components.auth import require_auth, display_user_info, get_user_role, get_user_section
 from components.metrics_dashboard import display_ticket_task_metrics
 from components.at_risk_widget import display_at_risk_widget
@@ -65,39 +65,54 @@ if user_role != 'Admin':
 # ============================================================================
 st.markdown("### Filters")
 
-# Row 1: Sprint and Date filters
-col1, col2, col3, col4 = st.columns(4)
+# Row 1: Task Type filter
+task_type_filter = st.radio(
+    "Task Type",
+    ["All Tasks", "Sprint Assigned"],
+    horizontal=True,
+    help="All Tasks: Show all tasks regardless of sprint assignment. Sprint Assigned: Only tasks with a sprint number assigned."
+)
+
+# Row 2: Time Window filter
+col1, col2, col3 = st.columns([1, 1, 1])
 
 with col1:
-    # Sprint filter mode
-    filter_mode = st.radio(
-        "Filter by",
-        ["All Tasks", "Sprint", "Custom Date Range"],
+    time_window_filter = st.radio(
+        "Time Window",
+        ["Sprint", "Custom Date Range"],
         horizontal=True,
-        help="Choose how to filter tasks"
+        help="Sprint: Filter by sprint date window. Custom: Filter by custom date range."
     )
 
-with col2:
-    if filter_mode == "Sprint":
-        # Build sprint options
-        sprint_options = ["All Sprints"]
-        if not all_sprints.empty:
-            for _, row in all_sprints.iterrows():
-                sprint_num = int(row['SprintNumber'])
-                label = f"Sprint {sprint_num}: {row['SprintName']}"
-                sprint_options.append(label)
-        
-        selected_sprint_label = st.selectbox(
-            "Select Sprint",
-            sprint_options,
-            index=0
+# Build sprint options for both filters
+sprint_options = []
+sprint_num_map = {}  # Map label to sprint number
+sprint_date_map = {}  # Map sprint number to (start_date, end_date)
+if not all_sprints.empty:
+    for _, row in all_sprints.iterrows():
+        sprint_num = int(row['SprintNumber'])
+        label = format_sprint_display(row['SprintName'], row['SprintStartDt'], row['SprintEndDt'], sprint_num)
+        sprint_options.append(label)
+        sprint_num_map[label] = sprint_num
+        sprint_date_map[sprint_num] = (
+            pd.to_datetime(row['SprintStartDt']).date(),
+            pd.to_datetime(row['SprintEndDt']).date()
         )
+
+with col2:
+    if time_window_filter == "Sprint":
+        if sprint_options:
+            selected_sprint_label = st.selectbox(
+                "Select Sprint",
+                sprint_options,
+                index=0,
+                help="Select a sprint to filter tasks created within its date window"
+            )
+        else:
+            st.warning("No sprints defined")
+            selected_sprint_label = None
     else:
         selected_sprint_label = None
-        st.empty()
-
-with col3:
-    if filter_mode == "Custom Date Range":
         # Get min/max dates from tasks
         min_date = pd.to_datetime(all_tasks['TaskCreatedDt'], errors='coerce').min()
         max_date = datetime.now()
@@ -110,12 +125,9 @@ with col3:
             value=min_date.date() if hasattr(min_date, 'date') else min_date,
             help="Filter tasks created on or after this date"
         )
-    else:
-        start_date = None
-        st.empty()
 
-with col4:
-    if filter_mode == "Custom Date Range":
+with col3:
+    if time_window_filter == "Custom Date Range":
         end_date = st.date_input(
             "End Date",
             value=datetime.now().date(),
@@ -123,6 +135,7 @@ with col4:
         )
     else:
         end_date = None
+        start_date = None
         st.empty()
 
 # Row 2: Section, Ticket Type, Status filters
@@ -192,21 +205,34 @@ st.divider()
 # ============================================================================
 filtered_df = all_tasks.copy()
 
-# Apply sprint/date filter
-if filter_mode == "Sprint" and selected_sprint_label and selected_sprint_label != "All Sprints":
-    # Extract sprint number from label
-    sprint_num = int(selected_sprint_label.split(":")[0].replace("Sprint ", ""))
-    # Filter by SprintsAssigned containing this sprint number
+# Apply Task Type filter (All Tasks vs Sprint Assigned)
+if task_type_filter == "Sprint Assigned":
+    # Only show tasks that have a sprint number assigned
     if 'SprintsAssigned' in filtered_df.columns:
         filtered_df = filtered_df[
             filtered_df['SprintsAssigned'].apply(
-                lambda x: str(sprint_num) in str(x).split(', ') if pd.notna(x) and x != '' else False
+                lambda x: pd.notna(x) and str(x).strip() != ''
             )
         ]
     elif 'SprintNumber' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['SprintNumber'] == sprint_num]
+        filtered_df = filtered_df[filtered_df['SprintNumber'].notna()]
 
-elif filter_mode == "Custom Date Range" and start_date and end_date:
+# Apply Time Window filter (Sprint date window vs Custom Date Range)
+if time_window_filter == "Sprint" and selected_sprint_label:
+    # Get sprint number and date range from map
+    sprint_num = sprint_num_map.get(selected_sprint_label)
+    if sprint_num and sprint_num in sprint_date_map:
+        sprint_start, sprint_end = sprint_date_map[sprint_num]
+        # Filter by tasks created within the sprint date window
+        if 'TaskCreatedDt' in filtered_df.columns:
+            filtered_df['_task_date'] = pd.to_datetime(filtered_df['TaskCreatedDt'], errors='coerce').dt.date
+            filtered_df = filtered_df[
+                (filtered_df['_task_date'] >= sprint_start) & 
+                (filtered_df['_task_date'] <= sprint_end)
+            ]
+            filtered_df = filtered_df.drop(columns=['_task_date'])
+
+elif time_window_filter == "Custom Date Range" and start_date and end_date:
     # Filter by TaskCreatedDt
     if 'TaskCreatedDt' in filtered_df.columns:
         filtered_df['_task_date'] = pd.to_datetime(filtered_df['TaskCreatedDt'], errors='coerce').dt.date

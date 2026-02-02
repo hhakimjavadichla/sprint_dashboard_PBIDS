@@ -8,11 +8,11 @@ import pandas as pd
 from datetime import datetime
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, JsCode
 from modules.task_store import get_task_store, VALID_STATUSES
-from modules.sprint_calendar import get_sprint_calendar
+from modules.sprint_calendar import get_sprint_calendar, format_sprint_display
 from modules.worklog_store import get_worklog_store
 from modules.section_filter import exclude_forever_tickets, exclude_ad_tickets
 from modules.capacity_validator import validate_capacity, get_capacity_dataframe
-from components.auth import require_admin, display_user_info
+from components.auth import require_team_member, display_user_info, is_admin
 from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, TASK_ORIGIN_CELL_STYLE, COLUMN_WIDTHS, get_column_width, COLUMN_DESCRIPTIONS, display_column_help, get_display_column_order, clean_subject_column
 from utils.constants import VALID_SECTIONS
 from utils.exporters import export_to_excel
@@ -24,8 +24,8 @@ apply_grid_styles()
 st.title("Sprint Update")
 st.caption("_PIBIDS Team_")
 
-# Require admin access
-require_admin("Sprint Planning")
+# Require team member access (Admin or PIBIDS User)
+require_team_member("Sprint Planning")
 display_user_info()
 
 # Instructions at the top
@@ -99,15 +99,11 @@ for idx, row in all_sprints.iterrows():
     if not show_previous and sprint_num < current_sprint_num:
         continue
     
-    label = f"Sprint {sprint_num}: {row['SprintName']} ({row['SprintStartDt'].strftime('%m/%d')} - {row['SprintEndDt'].strftime('%m/%d')})"
+    label = format_sprint_display(row['SprintName'], row['SprintStartDt'], row['SprintEndDt'], sprint_num)
     
-    # Count only OPEN tasks (exclude completed)
+    # Count ALL tasks assigned to this sprint (including completed)
     sprint_tasks = task_store.get_sprint_tasks(sprint_num)
-    if not sprint_tasks.empty:
-        open_tasks = sprint_tasks[~sprint_tasks['TaskStatus'].isin(COMPLETED_TASK_STATUSES)]
-        task_count = len(open_tasks)
-    else:
-        task_count = 0
+    task_count = len(sprint_tasks) if not sprint_tasks.empty else 0
     label += f" [{task_count} tasks]"
     
     sprint_options.append((sprint_num, label))
@@ -127,15 +123,19 @@ selected_label = st.selectbox(
 selected_sprint_num = sprint_options[[opt[1] for opt in sprint_options].index(selected_label)][0]
 selected_sprint = calendar.get_sprint_by_number(selected_sprint_num)
 
-# Get sprint tasks - ONLY open tasks (exclude completed for planning)
+# Create sprint display name for section headings
+selected_sprint_display = format_sprint_display(
+    selected_sprint['SprintName'],
+    selected_sprint['SprintStartDt'],
+    selected_sprint['SprintEndDt'],
+    selected_sprint_num
+)
+
+# Get ALL sprint tasks (including completed - policy: tasks stay in their assigned sprint)
 sprint_tasks = task_store.get_sprint_tasks(selected_sprint_num)
 
-# Filter out completed tasks - Sprint Planning is only for open/active tasks
-if not sprint_tasks.empty:
-    sprint_tasks = sprint_tasks[~sprint_tasks['TaskStatus'].isin(COMPLETED_TASK_STATUSES)].copy()
-
 if sprint_tasks.empty:
-    st.info(f"📭 No open tasks assigned to Sprint {selected_sprint_num}.")
+    st.info(f"📭 No tasks assigned to Sprint {selected_sprint_num}.")
     st.markdown("""    
     **To assign tasks:**
     1. Go to **Work Backlogs** page
@@ -324,8 +324,64 @@ if not filtered_tasks.empty:
     if 'GoalType' not in edit_df.columns:
         edit_df['GoalType'] = ''
     
+    # Add CompletedThisSprint column (auto-calculated based on TaskStatus and TaskResolvedDt)
+    sprint_start_dt = pd.to_datetime(selected_sprint['SprintStartDt'])
+    sprint_end_dt = pd.to_datetime(selected_sprint['SprintEndDt'])
+    
+    def is_completed_this_sprint(row):
+        """Check if task was completed within the sprint window."""
+        task_status = str(row.get('TaskStatus', '')).strip()
+        if task_status not in COMPLETED_TASK_STATUSES:
+            return 'No'
+        
+        # Check if TaskResolvedDt is within sprint window
+        resolved_dt = row.get('TaskResolvedDt')
+        if pd.isna(resolved_dt):
+            return 'No'
+        
+        try:
+            resolved_dt = pd.to_datetime(resolved_dt)
+            if sprint_start_dt <= resolved_dt <= sprint_end_dt:
+                return 'Yes'
+            else:
+                return 'No'
+        except:
+            return 'No'
+    
+    edit_df['CompletedThisSprint'] = edit_df.apply(is_completed_this_sprint, axis=1)
+    
+    # Ensure NonCompletionReason column exists
+    if 'NonCompletionReason' not in edit_df.columns:
+        edit_df['NonCompletionReason'] = ''
+    else:
+        edit_df['NonCompletionReason'] = edit_df['NonCompletionReason'].fillna('')
+    
+    # Create combined Sprint column with formatted display
+    edit_df['Sprint'] = edit_df.apply(
+        lambda row: format_sprint_display(
+            row.get('SprintName', ''),
+            row.get('SprintStartDt'),
+            row.get('SprintEndDt'),
+            int(row['SprintNumber']) if pd.notna(row.get('SprintNumber')) else None
+        ) if pd.notna(row.get('SprintNumber')) else '',
+        axis=1
+    )
+    
     # Use standardized column order from config
     display_order = get_display_column_order('AssignedTo')
+    
+    # Add Sprint column (replace SprintName position or add after SprintNumber)
+    if 'SprintName' in display_order:
+        idx = display_order.index('SprintName')
+        display_order.insert(idx, 'Sprint')
+    elif 'SprintNumber' in display_order:
+        idx = display_order.index('SprintNumber') + 1
+        display_order.insert(idx, 'Sprint')
+    else:
+        display_order.insert(0, 'Sprint')
+    
+    # Add CompletedThisSprint and NonCompletionReason at the end
+    display_order.extend(['CompletedThisSprint', 'NonCompletionReason'])
     
     available_cols = [col for col in display_order if col in edit_df.columns]
     edit_df = edit_df[available_cols].copy()
@@ -333,103 +389,141 @@ if not filtered_tasks.empty:
     # Clean subject column (remove LAB-XX: NNNNNN - prefix)
     edit_df = clean_subject_column(edit_df)
     
+    # Define column view presets
+    COLUMN_VIEWS = {
+        'All Columns': None,  # None means show all columns
+        'Hours & Capacity': ['TaskNum', 'Subject', 'AssignedTo', 'Section', 'GoalType', 
+                             'HoursEstimated', 'TaskHoursSpent', 'TicketHoursSpent', 'CompletedThisSprint'],
+        'Priority & Dependencies': ['TaskNum', 'Subject', 'AssignedTo', 'CustomerPriority', 'FinalPriority', 
+                                    'DependencyOn', 'DependenciesLead', 'DependencySecured', 'Comments'],
+        'Status Tracking': ['TaskNum', 'Subject', 'AssignedTo', 'TaskStatus', 'TaskOrigin', 
+                           'DaysOpen', 'Sprint', 'CompletedThisSprint', 'NonCompletionReason']
+    }
+    
+    # View selector
+    selected_view = st.radio(
+        "Column View: Select a preset to show only relevant columns for specific tasks",
+        options=list(COLUMN_VIEWS.keys()),
+        horizontal=True,
+        key="sprint_update_view_selector"
+    )
+    
+    # Get columns to show based on selected view
+    view_columns = COLUMN_VIEWS[selected_view]
+    
+    # Helper function to check if column should be hidden
+    def should_hide(col_name):
+        if view_columns is None:  # All Columns view
+            return False
+        return col_name not in view_columns
+    
     # Configure editable AgGrid
     gb = GridOptionsBuilder.from_dataframe(edit_df)
     gb.configure_default_column(resizable=True, sortable=True, filterable=True)
     
-    # Hidden columns for tracking
+    # Hidden columns for tracking (always hidden)
     gb.configure_column('_TicketGroup', hide=True)
     gb.configure_column('_IsMultiTask', hide=True)
     
-    # Configure columns - editable columns marked with ✏️ prefix
-    # Sprint fields
-    gb.configure_column('SprintNumber', header_name='✏️ SprintNumber', width=COLUMN_WIDTHS['SprintNumber'], editable=True,
+    # Configure columns - editable columns marked with prefix
+    # Sprint fields - combined into single column, keep SprintNumber editable but hidden
+    gb.configure_column('SprintNumber', header_name='SprintNumber', width=COLUMN_WIDTHS['SprintNumber'], editable=True,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('SprintNumber', ''),
                         cellEditor='agSelectCellEditor',
-                        cellEditorParams={'values': all_sprint_numbers})
-    gb.configure_column('SprintName', header_name='SprintName', width=COLUMN_WIDTHS['SprintName'], editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('SprintName', ''))
-    gb.configure_column('SprintStartDt', header_name='SprintStartDt', width=COLUMN_WIDTHS['SprintStartDt'], editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('SprintStartDt', ''))
-    gb.configure_column('SprintEndDt', header_name='SprintEndDt', width=COLUMN_WIDTHS['SprintEndDt'], editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('SprintEndDt', ''))
+                        cellEditorParams={'values': all_sprint_numbers},
+                        hide=True)
+    gb.configure_column('Sprint', header_name='Selected Sprint', width=200, editable=False,
+                        headerTooltip='Sprint assignment with dates', hide=should_hide('Sprint'))
+    gb.configure_column('SprintName', hide=True)
+    gb.configure_column('SprintStartDt', hide=True)
+    gb.configure_column('SprintEndDt', hide=True)
     
     # Task Origin (New vs Carryover)
     gb.configure_column('TaskOrigin', header_name='TaskOrigin', width=COLUMN_WIDTHS['TaskOrigin'], editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskOrigin', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskOrigin', ''), hide=should_hide('TaskOrigin'))
     
     # Sprints Assigned (read-only in Sprint Planning)
-    gb.configure_column('SprintsAssigned', header_name='Sprints Assigned', width=COLUMN_WIDTHS.get('SprintsAssigned', 130), editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('SprintsAssigned', ''))
+    gb.configure_column('SprintsAssigned', header_name='All Sprints Assigned', width=COLUMN_WIDTHS.get('SprintsAssigned', 130), editable=False,
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('SprintsAssigned', ''), hide=should_hide('SprintsAssigned'))
     
     # Ticket/Task info - non-editable
     gb.configure_column('TicketNum', header_name='TicketNum', width=COLUMN_WIDTHS['TicketNum'], editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketNum', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketNum', ''), hide=should_hide('TicketNum'))
     gb.configure_column('TaskCount', header_name='Task#', width=COLUMN_WIDTHS['TaskCount'], editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskCount', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskCount', ''), hide=should_hide('TaskCount'))
     gb.configure_column('TicketType', header_name='TicketType', width=COLUMN_WIDTHS['TicketType'], editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketType', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketType', ''), hide=should_hide('TicketType'))
     gb.configure_column('Section', header_name='Section', width=COLUMN_WIDTHS['Section'], editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('Section', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('Section', ''), hide=should_hide('Section'))
     gb.configure_column('CustomerName', header_name='CustomerName', width=COLUMN_WIDTHS['CustomerName'], editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('CustomerName', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('CustomerName', ''), hide=should_hide('CustomerName'))
     gb.configure_column('TaskNum', header_name='TaskNum', width=COLUMN_WIDTHS['TaskNum'], editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskNum', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskNum', ''), hide=should_hide('TaskNum'))
     gb.configure_column('TaskStatus', header_name='TaskStatus', width=COLUMN_WIDTHS.get('TaskStatus', 100), editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskStatus', 'Task status from iTrack'), )
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskStatus', 'Task status from iTrack'), hide=should_hide('TaskStatus'))
     gb.configure_column('TicketStatus', header_name='TicketStatus', width=COLUMN_WIDTHS.get('TicketStatus', 100), editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketStatus', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketStatus', ''), hide=should_hide('TicketStatus'))
     gb.configure_column('AssignedTo', header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'], editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('AssignedTo', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('AssignedTo', ''), hide=should_hide('AssignedTo'))
     gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS.get('Subject', 200), editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('Subject', ''), tooltipField='Subject')
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('Subject', ''), tooltipField='Subject', hide=should_hide('Subject'))
     gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=COLUMN_WIDTHS['TicketCreatedDt'], editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketCreatedDt', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketCreatedDt', ''), hide=should_hide('TicketCreatedDt'))
     gb.configure_column('TaskCreatedDt', header_name='TaskCreatedDt', width=COLUMN_WIDTHS['TaskCreatedDt'], editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskCreatedDt', ''))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskCreatedDt', ''), hide=should_hide('TaskCreatedDt'))
     
-    # Metrics and planning fields - editable ones marked with ✏️
+    # Metrics and planning fields - editable ones marked with prefix
     gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'], editable=False, 
                         headerTooltip=COLUMN_DESCRIPTIONS.get('DaysOpen', ''),
-                        type=['numericColumn'], )
+                        type=['numericColumn'], hide=should_hide('DaysOpen'))
     gb.configure_column('CustomerPriority', header_name='✏️ CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'], editable=True,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('CustomerPriority', ''),
                         cellEditor='agSelectCellEditor',
-                        cellEditorParams={'values': PRIORITY_VALUES})
+                        cellEditorParams={'values': PRIORITY_VALUES}, hide=should_hide('CustomerPriority'))
     gb.configure_column('FinalPriority', header_name='✏️ FinalPriority', width=COLUMN_WIDTHS['FinalPriority'], editable=True,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('FinalPriority', ''),
                         cellEditor='agSelectCellEditor',
-                        cellEditorParams={'values': PRIORITY_VALUES})
+                        cellEditorParams={'values': PRIORITY_VALUES}, hide=should_hide('FinalPriority'))
     gb.configure_column('GoalType', header_name='✏️ GoalType', width=COLUMN_WIDTHS['GoalType'], editable=True,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('GoalType', ''),
                         cellEditor='agSelectCellEditor',
-                        cellEditorParams={'values': ['', 'Mandatory', 'Stretch']})
+                        cellEditorParams={'values': ['', 'Mandatory', 'Stretch']}, hide=should_hide('GoalType'))
     gb.configure_column('DependencyOn', header_name='✏️ Dependency', width=COLUMN_WIDTHS['DependencyOn'], editable=True,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('DependencyOn', ''),
                         cellEditor='agSelectCellEditor',
-                        cellEditorParams={'values': DEPENDENCY_VALUES})
+                        cellEditorParams={'values': DEPENDENCY_VALUES}, hide=should_hide('DependencyOn'))
     gb.configure_column('DependenciesLead', header_name='✏️ DependencyLead(s)', width=COLUMN_WIDTHS['DependenciesLead'], editable=True,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('DependenciesLead', ''),
                         tooltipField='DependenciesLead',
                         cellEditor='agLargeTextCellEditor',
                         cellEditorPopup=True,
-                        cellEditorParams={'maxLength': 1000, 'rows': 10, 'cols': 50})
+                        cellEditorParams={'maxLength': 1000, 'rows': 10, 'cols': 50}, hide=should_hide('DependenciesLead'))
     gb.configure_column('DependencySecured', header_name='✏️ DependencySecured', width=COLUMN_WIDTHS['DependencySecured'], editable=True,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('DependencySecured', ''),
                         cellEditor='agSelectCellEditor',
-                        cellEditorParams={'values': DEPENDENCY_SECURED_VALUES})
+                        cellEditorParams={'values': DEPENDENCY_SECURED_VALUES}, hide=should_hide('DependencySecured'))
     gb.configure_column('Comments', header_name='✏️ Comments', width=COLUMN_WIDTHS['Comments'], editable=True,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('Comments', ''),
                         tooltipField='Comments',
                         cellEditor='agLargeTextCellEditor',
                         cellEditorPopup=True,
-                        cellEditorParams={'maxLength': 1000, 'rows': 10, 'cols': 50})
+                        cellEditorParams={'maxLength': 1000, 'rows': 10, 'cols': 50}, hide=should_hide('Comments'))
     gb.configure_column('HoursEstimated', header_name='✏️ HoursEstimated', width=COLUMN_WIDTHS['HoursEstimated'], editable=True,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('HoursEstimated', ''), type=['numericColumn'])
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('HoursEstimated', ''), type=['numericColumn'], hide=should_hide('HoursEstimated'))
     gb.configure_column('TaskHoursSpent', header_name='TaskHoursSpent', width=COLUMN_WIDTHS['TaskHoursSpent'], editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskHoursSpent', ''), type=['numericColumn'])
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TaskHoursSpent', ''), type=['numericColumn'], hide=should_hide('TaskHoursSpent'))
     gb.configure_column('TicketHoursSpent', header_name='TicketHoursSpent', width=COLUMN_WIDTHS['TicketHoursSpent'], editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketHoursSpent', ''), type=['numericColumn'])
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('TicketHoursSpent', ''), type=['numericColumn'], hide=should_hide('TicketHoursSpent'))
+    
+    # Sprint Completion Tracking columns
+    gb.configure_column('CompletedThisSprint', header_name='CompletedThisSprint', width=140, editable=False,
+                        headerTooltip='Auto-calculated: Yes if task completed within sprint window', hide=should_hide('CompletedThisSprint'))
+    gb.configure_column('NonCompletionReason', header_name='✏️ NonCompletionReason', width=200, editable=True,
+                        headerTooltip='Editable: Document why task was not completed in this sprint',
+                        tooltipField='NonCompletionReason',
+                        cellEditor='agLargeTextCellEditor',
+                        cellEditorPopup=True,
+                        cellEditorParams={'maxLength': 500, 'rows': 5, 'cols': 40}, hide=should_hide('NonCompletionReason'))
     
     gb.configure_pagination(enabled=False)
     gb.configure_selection(selection_mode='multiple', use_checkbox=False)
@@ -479,7 +573,8 @@ if not filtered_tasks.empty:
     with col_save1:
         if st.button("💾 Save Changes", type="primary", use_container_width=True, key="save_btn_top"):
             editable_fields = ['CustomerPriority', 'FinalPriority', 'HoursEstimated', 
-                             'GoalType', 'DependencyOn', 'DependenciesLead', 'DependencySecured', 'Comments']
+                             'GoalType', 'DependencyOn', 'DependenciesLead', 'DependencySecured', 'Comments',
+                             'NonCompletionReason']
             sprint_changes = 0
             
             # Handle SprintNumber changes - modifies SprintsAssigned column
@@ -587,7 +682,7 @@ if not filtered_tasks.empty:
     st.divider()
     
     # Task Completion Status Table by User
-    st.markdown("### Task Completion Status by User")
+    st.markdown(f"### Task Completion Status by User in {selected_sprint_display}")
     
     # Get ALL sprint tasks (including completed) for completion tracking
     all_sprint_tasks = task_store.get_sprint_tasks(selected_sprint_num)
@@ -596,66 +691,74 @@ if not filtered_tasks.empty:
         # Use display name if available
         assignee_col_status = 'AssignedTo_Display' if 'AssignedTo_Display' in all_sprint_tasks.columns else 'AssignedTo'
         
-        # Calculate completion stats per user
+        # Get sprint date range for daily columns
+        sprint_start = pd.to_datetime(selected_sprint['SprintStartDt']).date()
+        sprint_end = pd.to_datetime(selected_sprint['SprintEndDt']).date()
+        sprint_dates = pd.date_range(start=sprint_start, end=sprint_end).date.tolist()
+        
+        # Parse TaskResolvedDt for completion date tracking
+        if 'TaskResolvedDt' in all_sprint_tasks.columns:
+            all_sprint_tasks['_ResolvedDate'] = pd.to_datetime(all_sprint_tasks['TaskResolvedDt'], errors='coerce').dt.date
+        else:
+            all_sprint_tasks['_ResolvedDate'] = None
+        
+        # Calculate completion stats per user with daily breakdown
         completion_stats = []
         users = sorted(all_sprint_tasks[assignee_col_status].dropna().unique().tolist())
         
         total_completed = 0
         total_assigned = 0
+        daily_totals = {d: 0 for d in sprint_dates}
         
         for user in users:
             user_tasks = all_sprint_tasks[all_sprint_tasks[assignee_col_status] == user]
             assigned = len(user_tasks)
-            completed = len(user_tasks[user_tasks['TaskStatus'].isin(COMPLETED_TASK_STATUSES)])
+            completed_tasks = user_tasks[user_tasks['TaskStatus'].isin(COMPLETED_TASK_STATUSES)]
+            completed = len(completed_tasks)
             
             total_completed += completed
             total_assigned += assigned
             
-            completion_stats.append({
+            row_data = {
                 'User': user,
-                'Completed': completed,
-                'Assigned': assigned,
-                'Status': f"{completed}/{assigned}",
+                'Completion': f"{completed}/{assigned}",
                 'Percent': (completed / assigned * 100) if assigned > 0 else 0
-            })
+            }
+            
+            # Add daily completion counts
+            for date in sprint_dates:
+                day_count = len(completed_tasks[completed_tasks['_ResolvedDate'] == date])
+                col_name = date.strftime('%m/%d')
+                row_data[col_name] = day_count
+                daily_totals[date] += day_count
+            
+            completion_stats.append(row_data)
         
         # Add total row
-        completion_stats.append({
+        total_row = {
             'User': 'TOTAL',
-            'Completed': total_completed,
-            'Assigned': total_assigned,
-            'Status': f"{total_completed}/{total_assigned}",
+            'Completion': f"{total_completed}/{total_assigned}",
             'Percent': (total_completed / total_assigned * 100) if total_assigned > 0 else 0
-        })
+        }
+        for date in sprint_dates:
+            col_name = date.strftime('%m/%d')
+            total_row[col_name] = daily_totals[date]
+        completion_stats.append(total_row)
         
         completion_df = pd.DataFrame(completion_stats)
         
-        # Get max assigned for scaling the gradient (before filtering columns)
-        max_assigned = completion_df['Assigned'].max()
-        
-        # Store percent values for styling before creating display df
+        # Store percent values for styling
         percent_values = completion_df['Percent'].tolist()
-        assigned_values = completion_df['Assigned'].tolist()
         
-        # Create display dataframe with only 3 columns: User, Completion (status), Assigned
-        display_completion_df = completion_df[['User', 'Status', 'Assigned']].copy()
-        display_completion_df.columns = ['User', 'Completion', 'Assigned']
+        # Create display dataframe (exclude Percent column)
+        date_cols = [d.strftime('%m/%d') for d in sprint_dates]
+        display_cols = ['User', 'Completion'] + date_cols
+        display_completion_df = completion_df[display_cols].copy()
         
         # Red gradient function - lighter (0%) to darker (100%)
         def get_red_gradient(percent):
             """Get red gradient color. 0% = light pink, 100% = dark red"""
             # RGB values: light pink (255, 235, 235) to dark red (139, 0, 0)
-            r = int(255 - (percent / 100) * (255 - 139))
-            g = int(235 - (percent / 100) * 235)
-            b = int(235 - (percent / 100) * 235)
-            return f'rgb({r}, {g}, {b})'
-        
-        def get_task_count_gradient(count, max_count):
-            """Get gradient for task count. Fewer tasks = lighter, more tasks = darker"""
-            if max_count == 0:
-                return 'rgb(255, 235, 235)'
-            percent = (count / max_count) * 100
-            # Use same red gradient
             r = int(255 - (percent / 100) * (255 - 139))
             g = int(235 - (percent / 100) * 235)
             b = int(235 - (percent / 100) * 235)
@@ -667,23 +770,17 @@ if not filtered_tasks.empty:
         
         # Color function for styling using index to look up values
         def style_completion_table(df):
-            """Apply red gradient background to Completion and Assigned columns"""
+            """Apply red gradient background to Completion column"""
             styles = pd.DataFrame('', index=df.index, columns=df.columns)
             
             for idx in df.index:
                 percent = percent_values[idx]
-                assigned = assigned_values[idx]
                 is_total = df.loc[idx, 'User'] == 'TOTAL'
                 
                 # Completion column - color by percent complete
                 completion_bg = get_red_gradient(percent)
                 completion_text = get_text_color(percent)
                 styles.loc[idx, 'Completion'] = f'background-color: {completion_bg}; color: {completion_text}'
-                
-                # Assigned column - color by task count
-                assigned_bg = get_task_count_gradient(assigned, max_assigned)
-                assigned_text = get_text_color((assigned / max_assigned) * 100 if max_assigned > 0 else 0)
-                styles.loc[idx, 'Assigned'] = f'background-color: {assigned_bg}; color: {assigned_text}'
                 
                 # Bold for TOTAL row
                 if is_total:
@@ -697,53 +794,81 @@ if not filtered_tasks.empty:
         
         # Display styled dataframe
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
-        st.caption("🔴 Red gradient: lighter = less complete/fewer tasks → darker = more complete/more tasks")
+        st.caption("🔴 Red gradient: lighter = less complete → darker = more complete")
     else:
         st.info("No tasks assigned to this sprint yet.")
     
     st.divider()
     
     # Capacity Summary Section
-    st.markdown("### Capacity Summary by Person")
-    st.caption("**Limits:** Mandatory ≤ 48 hrs (60%), Stretch ≤ 16 hrs (20%), Total = 80 hrs")
+    st.markdown(f"### Capacity Summary by Person in {selected_sprint_display}")
+    st.caption("Shows estimated hours vs available hours from Team Availability (Admin Config)")
     
     # Calculate capacity from edited data (to show live updates)
     capacity_summary = task_store.get_capacity_summary(edited_df)
     
+    # Load Team Availability from session state
+    availability_key = f"team_availability_{selected_sprint_num}"
+    team_availability = st.session_state.get(availability_key, pd.DataFrame())
+    
     if not capacity_summary.empty:
-        # Create display DataFrame with 4 columns: Team Member, Mandatory, Stretch, Total
-        display_capacity_df = pd.DataFrame({
-            'Team Member': capacity_summary['AssignedTo'],
-            'Mandatory': capacity_summary['MandatoryHours'],
-            'Stretch': capacity_summary['StretchHours'],
-            'Total': capacity_summary['TotalHours']
-        })
+        # Build availability lookup by team member name
+        availability_lookup = {}
+        if not team_availability.empty:
+            for _, row in team_availability.iterrows():
+                member_name = row.get('Team Member', '')
+                total_hrs = row.get('Total Hrs Available', 80)
+                mandatory_pct = row.get('Total Mandatory Hrs % Available', 70)
+                stretch_pct = row.get('Total Stretch Hours %', 30)
+                availability_lookup[member_name] = {
+                    'mandatory_hrs': total_hrs * (mandatory_pct / 100),
+                    'stretch_hrs': total_hrs * (stretch_pct / 100),
+                    'total_hrs': total_hrs
+                }
         
-        # Get max values for heat map scaling
-        max_mandatory = max(display_capacity_df['Mandatory'].max(), 48)  # At least 48 for scaling
-        max_stretch = max(display_capacity_df['Stretch'].max(), 16)  # At least 16 for scaling
-        max_total = max(display_capacity_df['Total'].max(), 80)  # At least 80 for scaling
+        # Create display DataFrame with ratios
+        display_rows = []
+        for _, row in capacity_summary.iterrows():
+            member = row['AssignedTo']
+            mandatory_est = row['MandatoryHours']
+            stretch_est = row['StretchHours']
+            
+            # Get available hours from Team Availability (default: 48 mandatory, 16 stretch)
+            avail = availability_lookup.get(member, {'mandatory_hrs': 48, 'stretch_hrs': 16, 'total_hrs': 80})
+            
+            # Calculate ratios
+            mandatory_ratio = f"{mandatory_est:.0f}/{avail['mandatory_hrs']:.0f}"
+            stretch_ratio = f"{stretch_est:.0f}/{avail['stretch_hrs']:.0f}"
+            
+            display_rows.append({
+                'Team Member': member,
+                'Mandatory Hours': mandatory_ratio,
+                'Stretch Hours': stretch_ratio,
+                'Mandatory_Est': mandatory_est,
+                'Stretch_Est': stretch_est,
+                'Mandatory_Avail': avail['mandatory_hrs'],
+                'Stretch_Avail': avail['stretch_hrs']
+            })
         
-        # Heat map color function - lighter (low) to darker (high)
-        def get_heat_color(value, max_val, limit):
-            """Get heat map color. Low = light, high = dark red. Over limit = darker."""
-            if max_val == 0:
-                return 'background-color: rgb(255, 245, 245)'
+        display_capacity_df = pd.DataFrame(display_rows)
+        
+        # Heat map color function based on ratio (estimated/available) - single color gradient (blue)
+        def get_ratio_color(estimated, available):
+            """Get color based on ratio using blue gradient for density."""
+            if available == 0:
+                return 'background-color: rgb(245, 248, 255)'
             
-            # Calculate intensity based on value relative to limit
-            intensity = min(value / limit, 1.5)  # Cap at 150% for very over limit
+            ratio = estimated / available
+            # Clamp ratio between 0 and 1.5 for color calculation
+            clamped_ratio = min(max(ratio, 0), 1.5)
             
-            # RGB gradient: light (255, 245, 245) to dark red (180, 0, 0) for over limit
-            if value > limit:
-                # Over limit - use deeper red
-                r = int(220 - (intensity - 1) * 80)
-                g = int(50 - min((intensity - 1) * 50, 50))
-                b = int(50 - min((intensity - 1) * 50, 50))
-            else:
-                # Under limit - use green-to-yellow gradient
-                r = int(220 + (intensity * 35))
-                g = int(255 - (intensity * 100))
-                b = int(220 - (intensity * 170))
+            # Blue gradient: lighter blue (low) to darker blue (high)
+            # Base color: light blue rgb(230, 240, 255) to dark blue rgb(30, 80, 180)
+            intensity = clamped_ratio / 1.5  # Normalize to 0-1
+            
+            r = int(230 - intensity * 200)  # 230 -> 30
+            g = int(240 - intensity * 160)  # 240 -> 80
+            b = int(255 - intensity * 75)   # 255 -> 180
             
             r = max(0, min(255, r))
             g = max(0, min(255, g))
@@ -751,51 +876,57 @@ if not filtered_tasks.empty:
             
             return f'background-color: rgb({r}, {g}, {b})'
         
-        def get_text_color(value, limit):
-            """White text for dark backgrounds (over limit)."""
-            return 'color: white' if value > limit else 'color: black'
+        def get_ratio_text_color(estimated, available):
+            """White text for high density cells."""
+            if available == 0:
+                return 'color: black'
+            ratio = estimated / available
+            return 'color: white' if ratio > 0.7 else 'color: black'
+        
+        # Store values for styling lookup
+        capacity_values = {
+            idx: {
+                'mand_est': row['Mandatory_Est'],
+                'mand_avail': row['Mandatory_Avail'],
+                'stretch_est': row['Stretch_Est'],
+                'stretch_avail': row['Stretch_Avail']
+            }
+            for idx, row in display_capacity_df.iterrows()
+        }
+        
+        # Select only display columns
+        display_cols_df = display_capacity_df[['Team Member', 'Mandatory Hours', 'Stretch Hours']].copy()
         
         # Style function for the table
         def style_capacity_table(df):
             styles = pd.DataFrame('', index=df.index, columns=df.columns)
             
             for idx in df.index:
-                mandatory = df.loc[idx, 'Mandatory']
-                stretch = df.loc[idx, 'Stretch']
-                total = df.loc[idx, 'Total']
+                vals = capacity_values.get(idx, {'mand_est': 0, 'mand_avail': 48, 'stretch_est': 0, 'stretch_avail': 16})
                 
-                # Mandatory column
-                mand_bg = get_heat_color(mandatory, max_mandatory, 48)
-                mand_text = get_text_color(mandatory, 48)
-                styles.loc[idx, 'Mandatory'] = f'{mand_bg}; {mand_text}'
+                # Mandatory Hours column
+                mand_bg = get_ratio_color(vals['mand_est'], vals['mand_avail'])
+                mand_text = get_ratio_text_color(vals['mand_est'], vals['mand_avail'])
+                styles.loc[idx, 'Mandatory Hours'] = f'{mand_bg}; {mand_text}'
                 
-                # Stretch column
-                stretch_bg = get_heat_color(stretch, max_stretch, 16)
-                stretch_text = get_text_color(stretch, 16)
-                styles.loc[idx, 'Stretch'] = f'{stretch_bg}; {stretch_text}'
-                
-                # Total column
-                total_bg = get_heat_color(total, max_total, 80)
-                total_text = get_text_color(total, 80)
-                styles.loc[idx, 'Total'] = f'{total_bg}; {total_text}'
+                # Stretch Hours column
+                stretch_bg = get_ratio_color(vals['stretch_est'], vals['stretch_avail'])
+                stretch_text = get_ratio_text_color(vals['stretch_est'], vals['stretch_avail'])
+                styles.loc[idx, 'Stretch Hours'] = f'{stretch_bg}; {stretch_text}'
             
             return styles
         
-        # Apply styling and display
-        styled_capacity = display_capacity_df.style.apply(style_capacity_table, axis=None).format({
-            'Mandatory': '{:.1f}',
-            'Stretch': '{:.1f}',
-            'Total': '{:.1f}'
-        })
+        # Apply styling
+        styled_capacity = display_cols_df.style.apply(style_capacity_table, axis=None)
         
-        st.dataframe(styled_capacity, use_container_width=True, hide_index=True)
-        st.caption("🔥 Heat map: lighter = less hours, darker = more hours. Red = over limit.")
+        st.dataframe(styled_capacity, use_container_width=False, hide_index=True)
+        st.caption("Format: Estimated / Available. Darker blue indicates higher capacity utilization.")
     else:
         st.info("No tasks with estimated hours yet.")
     
     # ========== BURN RATE TABLE ==========
     st.divider()
-    st.markdown("### Burn Rate by Day")
+    st.markdown(f"### Burn Rate by Day in {selected_sprint_display}")
     st.caption("Shows % of total allocated time burned per team member by each day of the sprint")
     
     # Get worklog data for this sprint
@@ -867,6 +998,12 @@ if not filtered_tasks.empty:
                 else:
                     burn_rate_df.loc[member] = 0
             
+            # Track weekend columns (Saturday=5, Sunday=6)
+            weekend_cols = set()
+            for d in burn_rate_df.columns:
+                if hasattr(d, 'weekday') and d.weekday() in (5, 6):
+                    weekend_cols.add(d.strftime('%m/%d'))
+            
             # Format column headers as MM/DD
             burn_rate_df.columns = [d.strftime('%m/%d') if hasattr(d, 'strftime') else str(d) for d in burn_rate_df.columns]
             
@@ -890,27 +1027,35 @@ if not filtered_tasks.empty:
                 for col in df.columns:
                     if col == 'Team Member':
                         continue
+                    
+                    # Check if this is a weekend column
+                    is_weekend = col in weekend_cols
+                    
                     for idx in df.index:
-                        try:
-                            val = float(df.loc[idx, col])
-                        except (ValueError, TypeError):
-                            continue
-                        if val >= 100:
-                            # 100%+ = dark green (completed)
-                            styles.loc[idx, col] = 'background-color: #28a745; color: white'
-                        elif val >= 75:
-                            # 75-99% = medium green
-                            styles.loc[idx, col] = 'background-color: #5cb85c; color: white'
-                        elif val >= 50:
-                            # 50-74% = light green
-                            styles.loc[idx, col] = 'background-color: #8fd19e'
-                        elif val >= 25:
-                            # 25-49% = yellow-green
-                            styles.loc[idx, col] = 'background-color: #d4edda'
-                        elif val > 0:
-                            # 1-24% = very light
-                            styles.loc[idx, col] = 'background-color: #f0fff0'
-                        # 0% = no style (default white)
+                        if is_weekend:
+                            # Weekend columns get gray background
+                            styles.loc[idx, col] = 'background-color: #e0e0e0; color: #666666'
+                        else:
+                            try:
+                                val = float(df.loc[idx, col])
+                            except (ValueError, TypeError):
+                                continue
+                            if val >= 100:
+                                # 100%+ = dark green (completed)
+                                styles.loc[idx, col] = 'background-color: #28a745; color: white'
+                            elif val >= 75:
+                                # 75-99% = medium green
+                                styles.loc[idx, col] = 'background-color: #5cb85c; color: white'
+                            elif val >= 50:
+                                # 50-74% = light green
+                                styles.loc[idx, col] = 'background-color: #8fd19e'
+                            elif val >= 25:
+                                # 25-49% = yellow-green
+                                styles.loc[idx, col] = 'background-color: #d4edda'
+                            elif val > 0:
+                                # 1-24% = very light
+                                styles.loc[idx, col] = 'background-color: #f0fff0'
+                            # 0% = no style (default white)
                 
                 return styles
             
@@ -925,6 +1070,6 @@ if not filtered_tasks.empty:
             st.info("No worklog data available for this sprint period.")
     else:
         st.info("No worklog data available to calculate burn rate.")
-
+    
 else:
     st.info("No tasks match the current filters")

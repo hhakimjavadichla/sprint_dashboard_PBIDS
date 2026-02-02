@@ -214,6 +214,7 @@ def load_valid_sections():
         "AP - Biorepository",
         "TM - Donor Center",
         "TM - Therapeutic Apheresis",
+        "Lab Path Informatics",
     ]
 
 VALID_SECTIONS = load_valid_sections()

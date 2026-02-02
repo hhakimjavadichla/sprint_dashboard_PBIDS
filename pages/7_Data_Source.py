@@ -8,7 +8,7 @@ import pandas as pd
 from datetime import datetime
 from modules.data_loader import DataLoader
 from modules.task_store import get_task_store, reset_task_store, CLOSED_STATUSES
-from modules.sprint_calendar import get_sprint_calendar
+from modules.sprint_calendar import get_sprint_calendar, format_sprint_display
 from modules.worklog_store import get_worklog_store, reset_worklog_store
 from modules.snowflake_connector import (
     is_snowflake_configured,
@@ -382,7 +382,8 @@ URL: {config.get('url', config.get('account', 'Not set'))}""")
         # Show current sprint info
         current_sprint = calendar.get_current_sprint()
         if current_sprint:
-            st.success(f"📅 Current Sprint: **Sprint {current_sprint['SprintNumber']} - {current_sprint['SprintName']}** ({current_sprint['SprintStartDt'].strftime('%Y-%m-%d')} to {current_sprint['SprintEndDt'].strftime('%Y-%m-%d')})")
+            sprint_display = format_sprint_display(current_sprint['SprintName'], current_sprint['SprintStartDt'], current_sprint['SprintEndDt'], int(current_sprint['SprintNumber']))
+            st.success(f"📅 Current Sprint: **{sprint_display}**")
         
         st.page_link("pages/1_Overview.py", label="Go to Overview")
 
@@ -700,7 +701,8 @@ Enabled: {config.get('enabled', False)}""")
             # Show current sprint info
             current_sprint = calendar.get_current_sprint()
             if current_sprint:
-                st.success(f"📅 Current Sprint: **Sprint {current_sprint['SprintNumber']} - {current_sprint['SprintName']}** ({current_sprint['SprintStartDt'].strftime('%Y-%m-%d')} to {current_sprint['SprintEndDt'].strftime('%Y-%m-%d')})")
+                sprint_display = format_sprint_display(current_sprint['SprintName'], current_sprint['SprintStartDt'], current_sprint['SprintEndDt'], int(current_sprint['SprintNumber']))
+            st.success(f"📅 Current Sprint: **{sprint_display}**")
             
             st.page_link("pages/1_Overview.py", label="Go to Overview")
             

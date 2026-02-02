@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS dashboard_task_annotations (
   dependencies_lead TEXT,
   dependency_secured TEXT,
   comments TEXT,
+  non_completion_reason TEXT,
   status_update_dt TEXT,
   updated_at TEXT,
   FOREIGN KEY(task_num) REFERENCES tasks(task_num)
@@ -201,6 +202,7 @@ SELECT
   a.dependencies_lead AS DependenciesLead,
   a.dependency_secured AS DependencySecured,
   a.comments AS Comments,
+  a.non_completion_reason AS NonCompletionReason,
   tk.ticket_total_time_spent AS TicketTotalTimeSpent,
   t.task_minutes_spent AS TaskMinutesSpent,
   t.unique_task_id AS UniqueTaskId,
@@ -249,5 +251,10 @@ def initialize_db(conn: sqlite3.Connection) -> None:
     columns = [row[1] for row in cursor.fetchall()]
     if 'subject' not in columns:
         conn.execute("ALTER TABLE tasks ADD COLUMN subject TEXT")
+    # Migration: Add non_completion_reason column to dashboard_task_annotations if it doesn't exist
+    cursor = conn.execute("PRAGMA table_info(dashboard_task_annotations)")
+    annotation_columns = [row[1] for row in cursor.fetchall()]
+    if 'non_completion_reason' not in annotation_columns:
+        conn.execute("ALTER TABLE dashboard_task_annotations ADD COLUMN non_completion_reason TEXT")
     conn.executescript(VIEW_SQL)
     conn.commit()

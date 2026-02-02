@@ -9,7 +9,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 from st_aggrid.shared import JsCode
 from modules.task_store import get_task_store, CLOSED_STATUSES
 from modules.section_filter import filter_by_section, get_section_summary
-from modules.sprint_calendar import get_sprint_calendar
+from modules.sprint_calendar import get_sprint_calendar, format_sprint_display
 from datetime import datetime
 from components.auth import require_auth, display_user_info, get_user_role, get_user_section, is_admin, is_pbids_user, can_edit_section
 from utils.exporters import export_to_csv, export_to_excel
@@ -46,11 +46,10 @@ user_sections = []
 if user_section_raw:
     user_sections = [s.strip() for s in user_section_raw.split(',') if s.strip()]
 
-# For admins and PIBIDS Users, allow section selection (view all sections)
+# For admins and PIBIDS Users (Team Members), allow section selection with full edit access
 if is_admin() or is_pbids_user():
-    role_label = "Admin" if is_admin() else "PIBIDS User"
-    edit_note = "" if is_admin() else " (Read-only)"
-    st.info(f"**{role_label} View{edit_note}**: Select a section to view or see all sections")
+    role_label = "Admin" if is_admin() else "Team Member"
+    st.info(f"**{role_label} View**: Select a section to view or see all sections (Full edit access)")
     
     sections = sorted(sprint_df['Section'].dropna().unique().tolist())
     selected_section = st.selectbox(
@@ -182,9 +181,8 @@ display_column_help(title="❓ Column Descriptions")
 calendar = get_sprint_calendar()
 current_sprint = calendar.get_current_sprint()
 if current_sprint:
-    start_dt = pd.to_datetime(current_sprint['SprintStartDt'])
-    end_dt = pd.to_datetime(current_sprint['SprintEndDt'])
-    st.info(f"📅 **Current Sprint:** {current_sprint['SprintName']} (Sprint {current_sprint['SprintNumber']}) — {start_dt.strftime('%b %d')} to {end_dt.strftime('%b %d, %Y')}")
+    sprint_display = format_sprint_display(current_sprint['SprintName'], current_sprint['SprintStartDt'], current_sprint['SprintEndDt'], int(current_sprint['SprintNumber']))
+    st.info(f"📅 **Current Sprint:** {sprint_display}")
 
 if not filtered_df.empty:
     # Use display names if available
@@ -247,7 +245,8 @@ if not filtered_df.empty:
     gb.configure_column('TaskCreatedDt', header_name='TaskCreatedDt', width=COLUMN_WIDTHS.get('TaskCreatedDt', 110))
     gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'])
     
-    # Priority is editable ONLY for open tasks AND only for users who can edit (not PIBIDS Users)
+    # Priority is editable ONLY for open tasks AND only for users who can edit
+    # Admin and PIBIDS Users can edit all sections, Section Manager/User can edit their own section
     user_can_edit = can_edit_section()
     if user_can_edit:
         priority_editable = JsCode("""
@@ -260,7 +259,7 @@ if not filtered_df.empty:
                             cellEditor='agSelectCellEditor',
                             cellEditorParams={'values': PRIORITY_VALUES})
     else:
-        # Read-only for PIBIDS Users
+        # Read-only mode
         gb.configure_column('CustomerPriority', header_name='CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'])
     gb.configure_column('FinalPriority', header_name='FinalPriority', width=COLUMN_WIDTHS.get('FinalPriority', 100))
     gb.configure_column('GoalType', header_name='GoalType', width=COLUMN_WIDTHS.get('GoalType', 90))
@@ -286,7 +285,7 @@ if not filtered_df.empty:
                             cellEditorPopup=True,
                             cellEditorParams={'maxLength': 2000, 'rows': 5, 'cols': 50})
     else:
-        # Read-only for PIBIDS Users
+        # Read-only mode
         gb.configure_column('DependencyOn', header_name='Dependency', width=COLUMN_WIDTHS.get('DependencyOn', 110))
         gb.configure_column('DependenciesLead', header_name='DependencyLead(s)', width=COLUMN_WIDTHS.get('DependenciesLead', 120),
                             tooltipField='DependenciesLead')

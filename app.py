@@ -35,23 +35,7 @@ if not check_authentication():
     
     st.divider()
     
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        display_login_form()
-    
-    with col2:
-        st.markdown("### Test Credentials")
-        st.markdown("""
-        **Admin:**
-        - `admin` / `admin123`
-        
-        **Section Users:**
-        - `testuser` / `test123` (CoreLab - Chemistry)
-        - `corelab` / `corelab123` (CoreLab - Hematology)
-        - `micro` / `micro123` (Micro - Microbiology)
-        - `multiuser` / `multi123` (Multi-section: Micro + CPM)
-        """)
+    display_login_form()
     
     st.stop()
 
@@ -63,27 +47,27 @@ overview_page = st.Page("pages/1_Overview.py", title="Overview")
 sprint_prioritization = st.Page("pages/2_Lab_Section_View/1_Sprint_Prioritization.py", title="Sprint Prioritization")
 sprint_feedback = st.Page("pages/2_Lab_Section_View/2_Sprint_Feedback.py", title="Sprint Feedback")
 
-analytics_page = st.Page("pages/3_Analytics.py", title="Analytics")
 
-# PIBIDS Sprint Planning pages
-sprint_update = st.Page("pages/4_PIBIDS_Sprint_Planning/1_Sprint_Update.py", title="Sprint Update")
-backlog_assign = st.Page("pages/4_PIBIDS_Sprint_Planning/2_Backlog_Assign.py", title="Backlog Assign")
-
-worklog_page = st.Page("pages/5_Worklog_Activity.py", title="Worklog Activity")
+# PIBIDS Sprint Planning pages (order: Backlog Assign, Sprint Update, Worklog Activity)
+backlog_assign = st.Page("pages/4_PIBIDS_Sprint_Planning/1_Backlog_Assign.py", title="Backlog Assign")
+sprint_update = st.Page("pages/4_PIBIDS_Sprint_Planning/2_Sprint_Update.py", title="Sprint Update")
+worklog_page = st.Page("pages/4_PIBIDS_Sprint_Planning/3_Worklog_Activity.py", title="Worklog Activity")
 admin_page = st.Page("pages/6_Admin_Config.py", title="Admin Config")
 upload_page = st.Page("pages/7_Data_Source.py", title="Data Source")
 feature_requests_page = st.Page("pages/8_Feature_Requests.py", title="Feature Requests")
+reports_analytics_page = st.Page("pages/9_Reports_Analytics.py", title="Reports & Analytics")
 
 # Create navigation with sections based on user role
 nav_sections = {
-    "Dashboard": [overview_page, analytics_page],
+    "Dashboard": [overview_page],
     "Lab Section View": [sprint_prioritization, sprint_feedback],
-    "PIBIDS Sprint Planning": [sprint_update, backlog_assign],
+    "PIBIDS Sprint Planning": [backlog_assign, sprint_update, worklog_page],
+    "Under Construction": [reports_analytics_page],
 }
 
 # Admin-only pages
 if is_admin():
-    nav_sections["Admin"] = [worklog_page, admin_page, upload_page, feature_requests_page]
+    nav_sections["Admin"] = [admin_page, upload_page, feature_requests_page]
 
 pg = st.navigation(nav_sections)
 

@@ -27,6 +27,8 @@ valid_sections = [
     "AP - Biorepository",
     "TM - Donor Center",
     "TM - Therapeutic Apheresis",
+    "Lab Path Informatics",
+    "Test",
 ]
 
 # Default section if none specified
