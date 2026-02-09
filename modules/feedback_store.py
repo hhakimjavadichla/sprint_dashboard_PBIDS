@@ -21,9 +21,11 @@ FEEDBACK_COLUMNS = [
     'FeedbackType',  # 'SectionFeedback' (from sections about PBIDS) or 'PBIDSFeedback' (from PBIDS about sections)
     # Section feedback fields (about PBIDS support)
     'OverallSatisfaction',
+    'TimelinessRating',  # New: Timeliness of response to queries
     'WhatWentWell',
-    'WhatDidNotGoWell',
-    # PBIDS feedback fields (about section collaboration)
+    'WhatDidNotGoWell',  # Legacy - kept for backward compatibility
+    'WhatCouldBeImproved',  # New field name
+    # PBIDS feedback fields (about section collaboration) - legacy, kept for backward compatibility
     'CommunicationRating',
     'ResponsivenessRating',
     'CollaborationWentWell',
@@ -141,24 +143,69 @@ class FeedbackStore:
         
         return mask.any()
     
+    def has_user_feedback_for_sprint(self, sprint_number: int, username: str) -> bool:
+        """Check if user has already submitted ANY feedback for a sprint (regardless of section)
+        
+        New policy: One feedback per user per sprint.
+        
+        Args:
+            sprint_number: Sprint number
+            username: Username
+        
+        Returns:
+            True if user has already submitted feedback for this sprint
+        """
+        if self.feedback_df.empty:
+            return False
+        
+        mask = (
+            (self.feedback_df['SprintNumber'] == sprint_number) &
+            (self.feedback_df['SubmittedBy'] == username)
+        )
+        
+        return mask.any()
+    
+    def get_user_feedback_for_sprint(self, sprint_number: int, username: str) -> pd.DataFrame:
+        """Get feedback submitted by a user for a specific sprint
+        
+        Args:
+            sprint_number: Sprint number
+            username: Username
+        
+        Returns:
+            DataFrame with user's feedback for the sprint (should be 0 or 1 row under new policy)
+        """
+        if self.feedback_df.empty:
+            return pd.DataFrame(columns=FEEDBACK_COLUMNS)
+        
+        mask = (
+            (self.feedback_df['SprintNumber'] == sprint_number) &
+            (self.feedback_df['SubmittedBy'] == username)
+        )
+        
+        return self.feedback_df[mask].copy()
+    
     def add_section_feedback(
         self,
         sprint_number: int,
         section: str,
         submitted_by: str,
         overall_satisfaction: int,
+        timeliness_rating: int,
         what_went_well: str,
-        what_did_not_go_well: str
+        what_could_be_improved: str
     ) -> Tuple[bool, str]:
-        """Add feedback from section users about PBIDS support"""
+        """Add feedback from section managers about PBIDS support"""
         
-        # Check if feedback already exists for this type
-        if self.has_feedback(sprint_number, section, submitted_by, FEEDBACK_TYPE_SECTION):
-            return False, f"Section feedback already submitted for Sprint {sprint_number} by {submitted_by} for section {section}"
+        # Check if user already submitted feedback for this sprint (new policy: one per user per sprint)
+        if self.has_user_feedback_for_sprint(sprint_number, submitted_by):
+            return False, f"Feedback already submitted for Sprint {sprint_number}. Only one feedback per sprint allowed."
         
-        # Validate satisfaction rating
+        # Validate ratings
         if overall_satisfaction < 1 or overall_satisfaction > 5:
             return False, "Overall satisfaction must be between 1 and 5"
+        if timeliness_rating < 1 or timeliness_rating > 5:
+            return False, "Timeliness rating must be between 1 and 5"
         
         # Generate feedback ID
         feedback_id = f"FB-SEC-{sprint_number}-{section}-{submitted_by}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -172,8 +219,10 @@ class FeedbackStore:
             'SubmittedAt': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'FeedbackType': FEEDBACK_TYPE_SECTION,
             'OverallSatisfaction': overall_satisfaction,
+            'TimelinessRating': timeliness_rating,
             'WhatWentWell': what_went_well,
-            'WhatDidNotGoWell': what_did_not_go_well,
+            'WhatDidNotGoWell': what_could_be_improved,  # Legacy field
+            'WhatCouldBeImproved': what_could_be_improved,
             'CommunicationRating': None,
             'ResponsivenessRating': None,
             'CollaborationWentWell': None,

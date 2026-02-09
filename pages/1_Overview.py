@@ -8,12 +8,10 @@ import pandas as pd
 from datetime import datetime, timedelta
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 from modules.task_store import get_task_store, CLOSED_STATUSES
-from modules.section_filter import exclude_forever_tickets, exclude_ad_tickets
+from modules.section_filter import exclude_ad_tickets
 from modules.sprint_calendar import get_sprint_calendar, format_sprint_display
 from components.auth import require_auth, display_user_info, get_user_role, get_user_section
 from components.metrics_dashboard import display_ticket_task_metrics
-from components.at_risk_widget import display_at_risk_widget
-from components.capacity_widget import display_capacity_summary
 from utils.exporters import export_to_csv, export_to_excel
 from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, get_backlog_column_order, COLUMN_WIDTHS, clean_subject_column
 
@@ -65,20 +63,12 @@ if user_role != 'Admin':
 # ============================================================================
 st.markdown("### Filters")
 
-# Row 1: Task Type filter
-task_type_filter = st.radio(
-    "Task Type",
-    ["All Tasks", "Sprint Assigned"],
-    horizontal=True,
-    help="All Tasks: Show all tasks regardless of sprint assignment. Sprint Assigned: Only tasks with a sprint number assigned."
-)
-
-# Row 2: Time Window filter
+# Row 1: Task Created Date filter
 col1, col2, col3 = st.columns([1, 1, 1])
 
 with col1:
     time_window_filter = st.radio(
-        "Time Window",
+        "Task Created Date",
         ["Sprint", "Custom Date Range"],
         horizontal=True,
         help="Sprint: Filter by sprint date window. Custom: Filter by custom date range."
@@ -163,10 +153,10 @@ with col2:
     )
 
 with col3:
-    # Status filter
+    # Current Status filter
     available_statuses = sorted(all_tasks['TaskStatus'].dropna().unique().tolist()) if 'TaskStatus' in all_tasks.columns else []
     selected_statuses = st.multiselect(
-        "Status",
+        "Current Status",
         available_statuses,
         default=[],
         help="Filter by task status (leave empty for all)"
@@ -186,10 +176,10 @@ with col4:
 # Row 3: Additional options
 col1, col2, col3, col4 = st.columns(4)
 with col1:
-    exclude_forever = st.checkbox(
-        "Exclude Forever Tickets",
+    include_sprint_only = st.checkbox(
+        "Include Sprint Assigned Only",
         value=False,
-        help="Hide Standing Meetings and Miscellaneous Meetings tasks"
+        help="Only show tasks that have been assigned to a sprint"
     )
 with col2:
     exclude_ad = st.checkbox(
@@ -205,8 +195,8 @@ st.divider()
 # ============================================================================
 filtered_df = all_tasks.copy()
 
-# Apply Task Type filter (All Tasks vs Sprint Assigned)
-if task_type_filter == "Sprint Assigned":
+# Apply Include Sprint Assigned Only filter
+if include_sprint_only:
     # Only show tasks that have a sprint number assigned
     if 'SprintsAssigned' in filtered_df.columns:
         filtered_df = filtered_df[
@@ -258,10 +248,6 @@ if selected_statuses:
 if selected_assignees:
     filtered_df = filtered_df[filtered_df[assignee_col].isin(selected_assignees)]
 
-# Apply forever tickets filter
-if exclude_forever:
-    filtered_df = exclude_forever_tickets(filtered_df)
-
 # Apply AD tickets filter
 if exclude_ad:
     filtered_df = exclude_ad_tickets(filtered_df)
@@ -269,8 +255,8 @@ if exclude_ad:
 # ============================================================================
 # METRICS
 # ============================================================================
-# Pass exclude_forever flag to metrics - if user excluded them, don't double-exclude
-display_ticket_task_metrics(filtered_df, exclude_forever_internally=not exclude_forever)
+# Display metrics
+display_ticket_task_metrics(filtered_df)
 
 st.divider()
 
@@ -278,8 +264,8 @@ st.divider()
 # TASK TABLE
 # ============================================================================
 filter_notes = []
-if exclude_forever:
-    filter_notes.append("forever tickets excluded")
+if include_sprint_only:
+    filter_notes.append("sprint assigned only")
 if exclude_ad:
     filter_notes.append("AD tickets excluded")
 
@@ -288,140 +274,164 @@ if filter_notes:
 else:
     st.caption(f"📋 Showing **{len(filtered_df)}** tasks (of **{len(all_tasks)}** total)")
 
-# Tabs for different views
-tab1, tab2, tab3 = st.tabs(["📋 All Tasks", "⚠️ At Risk", "📊 Capacity"])
-
-with tab1:
-    if not filtered_df.empty:
-        # Prepare display dataframe with ticket grouping for color-coding
-        display_df = filtered_df.copy()
+# Task Table
+if not filtered_df.empty:
+    # Prepare display dataframe with ticket grouping for color-coding
+    display_df = filtered_df.copy()
+    
+    # Add ticket grouping for row banding (color-coded by ticket)
+    if 'TicketNum' in display_df.columns:
+        # Count tasks per ticket
+        ticket_counts = display_df.groupby('TicketNum').size().to_dict()
         
-        # Add ticket grouping for row banding (color-coded by ticket)
-        if 'TicketNum' in display_df.columns:
-            # Count tasks per ticket
-            ticket_counts = display_df.groupby('TicketNum').size().to_dict()
-            
-            # Sort by TicketNum to group tasks from same ticket together
-            display_df = display_df.sort_values(
-                by=['TicketNum', 'TaskNum'],
-                ascending=[True, True],
-                na_position='last'
-            ).reset_index(drop=True)
-            
-            # Track ticket groups for row banding
-            ticket_group_ids = []
-            current_group = 0
-            prev_ticket = None
-            
-            for idx, row in display_df.iterrows():
-                ticket = row['TicketNum']
-                if ticket != prev_ticket:
-                    current_group += 1
-                    prev_ticket = ticket
-                ticket_group_ids.append(current_group)
-            
-            display_df['_TicketGroup'] = ticket_group_ids
-            display_df['_IsMultiTask'] = display_df['TicketNum'].map(lambda x: ticket_counts.get(x, 1) > 1)
+        # Sort by TicketNum to group tasks from same ticket together
+        display_df = display_df.sort_values(
+            by=['TicketNum', 'TaskNum'],
+            ascending=[True, True],
+            na_position='last'
+        ).reset_index(drop=True)
         
-        # Use standardized column order from config (backlog order - no sprint detail columns)
-        display_cols = get_backlog_column_order(assignee_col)
+        # Track ticket groups for row banding
+        ticket_group_ids = []
+        current_group = 0
+        prev_ticket = None
         
-        available_cols = [col for col in display_cols if col in display_df.columns]
-        grid_df = display_df[available_cols].copy()
+        for idx, row in display_df.iterrows():
+            ticket = row['TicketNum']
+            if ticket != prev_ticket:
+                current_group += 1
+                prev_ticket = ticket
+            ticket_group_ids.append(current_group)
         
-        # Clean subject column (remove LAB-XX: NNNNNN - prefix)
-        grid_df = clean_subject_column(grid_df)
-        
-        # Show task count in table
-        st.caption(f"Table contains **{len(grid_df)}** tasks")
-        
-        # Configure AgGrid
-        gb = GridOptionsBuilder.from_dataframe(grid_df)
-        gb.configure_default_column(resizable=True, filterable=True, sortable=True)
-        
-        # Hidden columns for row styling
-        if '_TicketGroup' in grid_df.columns:
-            gb.configure_column('_TicketGroup', hide=True)
-        if '_IsMultiTask' in grid_df.columns:
-            gb.configure_column('_IsMultiTask', hide=True)
-        
-        gb.configure_column('TaskNum', header_name='Task #', width=100)
-        gb.configure_column('TicketNum', header_name='Ticket #', width=100)
-        gb.configure_column('TicketType', header_name='Type', width=60)
-        gb.configure_column('Subject', width=200, tooltipField='Subject')
-        gb.configure_column('TaskStatus', width=100)
-        if 'TicketStatus' in available_cols:
-            gb.configure_column('TicketStatus', header_name='Ticket Status', width=100)
-        gb.configure_column(assignee_col, header_name='Assignee', width=120)
-        gb.configure_column('DaysOpen', header_name='Days Open', width=80)
-        gb.configure_column('Section', width=80)
-        if 'SprintsAssigned' in available_cols:
-            gb.configure_column('SprintsAssigned', header_name='Sprints', width=100)
-        gb.configure_column('HoursEstimated', header_name='Est. Hours', width=90)
-        gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=500)
-        
-        # Row styling for multi-task ticket groups (alternating colors)
-        row_style_jscode = JsCode("""
-        function(params) {
-            if (params.data._IsMultiTask) {
-                if (params.data._TicketGroup % 2 === 0) {
-                    return { 'backgroundColor': '#e8f4e8' };  // Light green for even groups
-                } else {
-                    return { 'backgroundColor': '#e8e8f4' };  // Light blue for odd groups
-                }
+        display_df['_TicketGroup'] = ticket_group_ids
+        display_df['_IsMultiTask'] = display_df['TicketNum'].map(lambda x: ticket_counts.get(x, 1) > 1)
+    
+    # Use standardized column order from config (backlog order - no sprint detail columns)
+    display_cols = get_backlog_column_order(assignee_col)
+    
+    available_cols = [col for col in display_cols if col in display_df.columns]
+    grid_df = display_df[available_cols].copy()
+    
+    # Clean subject column (remove LAB-XX: NNNNNN - prefix)
+    grid_df = clean_subject_column(grid_df)
+    
+    # Show task count in table
+    st.caption(f"Table contains **{len(grid_df)}** tasks")
+    
+    # Define column view presets
+    COLUMN_VIEWS = {
+        'All Columns': None,
+        'Task Summary': ['TicketNum', 'TaskNum', 'TaskCount', 'Subject', 'TicketType',
+                         'TaskStatus', assignee_col, 'Section'],
+        'Status & Dates': ['TicketNum', 'TaskNum', 'Subject', 'TaskStatus', 'TicketStatus',
+                           assignee_col, 'TicketCreatedDt', 'TaskCreatedDt', 'DaysOpen'],
+        'Hours & Effort': ['TicketNum', 'TaskNum', 'Subject', assignee_col, 'Section',
+                           'HoursEstimated', 'TaskHoursSpent', 'TicketHoursSpent', 'SprintsAssigned'],
+    }
+    
+    selected_view = st.radio(
+        "Column View: Select a preset to show only relevant columns",
+        options=list(COLUMN_VIEWS.keys()),
+        horizontal=True,
+        key="overview_view_selector"
+    )
+    
+    view_columns = COLUMN_VIEWS[selected_view]
+    
+    def should_hide(col_name):
+        if view_columns is None:
+            return False
+        return col_name not in view_columns
+    
+    # Configure AgGrid
+    gb = GridOptionsBuilder.from_dataframe(grid_df)
+    gb.configure_default_column(resizable=True, filterable=True, sortable=True)
+    
+    # Hidden columns for row styling
+    if '_TicketGroup' in grid_df.columns:
+        gb.configure_column('_TicketGroup', hide=True)
+    if '_IsMultiTask' in grid_df.columns:
+        gb.configure_column('_IsMultiTask', hide=True)
+    
+    gb.configure_column('TaskNum', header_name='Task #', width=100, hide=should_hide('TaskNum'))
+    gb.configure_column('TicketNum', header_name='Ticket #', width=100, hide=should_hide('TicketNum'))
+    gb.configure_column('TicketType', header_name='Type', width=60, hide=should_hide('TicketType'))
+    gb.configure_column('Subject', width=200, tooltipField='Details', hide=should_hide('Subject'))
+    gb.configure_column('Details', hide=True)  # Hidden - only used for Subject tooltip
+    gb.configure_column('TaskStatus', width=100, hide=should_hide('TaskStatus'))
+    if 'TicketStatus' in available_cols:
+        gb.configure_column('TicketStatus', header_name='Ticket Status', width=100, hide=should_hide('TicketStatus'))
+    gb.configure_column(assignee_col, header_name='Assignee', width=120, hide=should_hide(assignee_col))
+    gb.configure_column('DaysOpen', header_name='Days Open', width=80, hide=should_hide('DaysOpen'))
+    gb.configure_column('Section', width=80, hide=should_hide('Section'))
+    if 'SprintsAssigned' in available_cols:
+        gb.configure_column('SprintsAssigned', header_name='Sprints', width=100, hide=should_hide('SprintsAssigned'))
+    gb.configure_column('HoursEstimated', header_name='Est. Hours', width=90, hide=should_hide('HoursEstimated'))
+    if 'TaskCount' in available_cols:
+        gb.configure_column('TaskCount', header_name='Task#', width=70, hide=should_hide('TaskCount'))
+    if 'TaskHoursSpent' in available_cols:
+        gb.configure_column('TaskHoursSpent', header_name='TaskHoursSpent', width=110, hide=should_hide('TaskHoursSpent'))
+    if 'TicketHoursSpent' in available_cols:
+        gb.configure_column('TicketHoursSpent', header_name='TicketHoursSpent', width=120, hide=should_hide('TicketHoursSpent'))
+    if 'TicketCreatedDt' in available_cols:
+        gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=110, hide=should_hide('TicketCreatedDt'))
+    if 'TaskCreatedDt' in available_cols:
+        gb.configure_column('TaskCreatedDt', header_name='TaskCreatedDt', width=110, hide=should_hide('TaskCreatedDt'))
+    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=500)
+    
+    # Row styling for multi-task ticket groups (alternating colors)
+    row_style_jscode = JsCode("""
+    function(params) {
+        if (params.data._IsMultiTask) {
+            if (params.data._TicketGroup % 2 === 0) {
+                return { 'backgroundColor': '#e8f4e8' };  // Light green for even groups
+            } else {
+                return { 'backgroundColor': '#e8e8f4' };  // Light blue for odd groups
             }
-            return null;
         }
-        """)
-        
-        grid_options = gb.build()
-        grid_options['getRowStyle'] = row_style_jscode
-        grid_options['enableBrowserTooltips'] = False  # Disable browser tooltips to avoid double tooltip
-        
-        AgGrid(
-            grid_df,
-            gridOptions=grid_options,
-            height=600,
-            theme='streamlit',
-            fit_columns_on_grid_load=False,
-            enable_enterprise_modules=False,
-            custom_css=get_custom_css(),
-            allow_unsafe_jscode=True
+        return null;
+    }
+    """)
+    
+    grid_options = gb.build()
+    grid_options['getRowStyle'] = row_style_jscode
+    grid_options['enableBrowserTooltips'] = False  # Disable browser tooltips to avoid double tooltip
+    
+    AgGrid(
+        grid_df,
+        gridOptions=grid_options,
+        height=600,
+        theme='streamlit',
+        fit_columns_on_grid_load=False,
+        enable_enterprise_modules=False,
+        custom_css=get_custom_css(),
+        allow_unsafe_jscode=True
+    )
+    
+    # Export options
+    col1, col2, col3 = st.columns([1, 1, 4])
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    with col1:
+        csv_data = export_to_csv(filtered_df)
+        st.download_button(
+            "📥 Export CSV",
+            csv_data,
+            f"dashboard_tasks_{timestamp}.csv",
+            "text/csv"
         )
-        
-        # Export options
-        col1, col2, col3 = st.columns([1, 1, 4])
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        with col1:
-            csv_data = export_to_csv(filtered_df)
-            st.download_button(
-                "📥 Export CSV",
-                csv_data,
-                f"dashboard_tasks_{timestamp}.csv",
-                "text/csv"
-            )
-        
-        with col2:
-            excel_data = export_to_excel(filtered_df)
-            st.download_button(
-                "📥 Export Excel",
-                excel_data,
-                f"dashboard_tasks_{timestamp}.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-    else:
-        st.info("No tasks match the current filters")
-
-with tab2:
-    display_at_risk_widget(filtered_df, detailed=True)
-
-with tab3:
-    if user_role == 'Admin':
-        display_capacity_summary(filtered_df, detailed=True)
-    else:
-        st.info("Capacity view is available for administrators only")
+    
+    with col2:
+        excel_data = export_to_excel(filtered_df)
+        st.download_button(
+            "📥 Export Excel",
+            excel_data,
+            f"dashboard_tasks_{timestamp}.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+else:
+    st.info("No tasks match the current filters")
 
 # Quick stats at bottom
 st.divider()

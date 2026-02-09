@@ -17,7 +17,7 @@ import os
 import pandas as pd
 from datetime import datetime
 from typing import Optional, List, Dict, Tuple
-from modules.sprint_calendar import get_sprint_calendar
+from modules.sprint_calendar import get_sprint_calendar, format_sprints_assigned_display
 from modules.sqlite_store import is_sqlite_enabled, load_task_view, save_tasks
 from utils.name_mapper import apply_name_mapping, get_display_name
 from modules.section_filter import filter_by_team_members
@@ -248,7 +248,7 @@ class TaskStore:
         ]
         for col in date_cols:
             if col in df.columns:
-                df[col] = pd.to_datetime(df[col], errors='coerce')
+                df[col] = pd.to_datetime(df[col], errors='coerce', format='mixed')
 
         if 'TicketType' not in df.columns or df['TicketType'].isna().all():
             df['TicketType'] = df['Subject'].apply(self._extract_ticket_type)
@@ -846,14 +846,18 @@ class TaskStore:
             # Calculate DaysOpen (days since task was assigned)
             result = self._calculate_days_open(result)
             
-            # Calculate hours from worklog (sprint-specific)
-            result = self._calculate_hours_from_worklog(result, sprint_number)
+            # Calculate hours from worklog (total hours, not sprint-specific)
+            result = self._calculate_hours_from_worklog(result, sprint_number=None)
             
             # Filter by valid team members
             result = filter_by_team_members(result, 'AssignedTo')
             
             # Apply name mapping for display names
             result = apply_name_mapping(result, 'AssignedTo')
+            
+            # Format SprintsAssigned for display (e.g., "1, 2" -> "26-1, 26-2")
+            if 'SprintsAssigned' in result.columns:
+                result['SprintsAssigned'] = result['SprintsAssigned'].apply(format_sprints_assigned_display)
         
         return result
     
@@ -911,11 +915,11 @@ class TaskStore:
         # Get ticket hours from worklog
         ticket_hours = worklog_store.get_ticket_hours_spent(task_to_ticket, sprint_number)
         
-        # Apply task hours
-        df['TaskHoursSpent'] = df['TaskNum'].astype(str).map(task_hours).fillna(0.0)
+        # Apply task hours (rounded to 2 decimal places)
+        df['TaskHoursSpent'] = df['TaskNum'].astype(str).map(task_hours).fillna(0.0).round(2)
         
-        # Apply ticket hours
-        df['TicketHoursSpent'] = df['TicketNum'].astype(str).map(ticket_hours).fillna(0.0)
+        # Apply ticket hours (rounded to 2 decimal places)
+        df['TicketHoursSpent'] = df['TicketNum'].astype(str).map(ticket_hours).fillna(0.0).round(2)
         
         return df
     
@@ -1032,6 +1036,10 @@ class TaskStore:
             
             # Apply name mapping for display names
             backlog_tasks = apply_name_mapping(backlog_tasks, 'AssignedTo')
+            
+            # Format SprintsAssigned for display (e.g., "1, 2" -> "26-1, 26-2")
+            if 'SprintsAssigned' in backlog_tasks.columns:
+                backlog_tasks['SprintsAssigned'] = backlog_tasks['SprintsAssigned'].apply(format_sprints_assigned_display)
         
         return backlog_tasks
     
@@ -1176,7 +1184,11 @@ class TaskStore:
     
     def get_all_tasks(self) -> pd.DataFrame:
         """Get all tasks in the store"""
-        return self.tasks_df.copy()
+        result = self.tasks_df.copy()
+        # Format SprintsAssigned for display (e.g., "1, 2" -> "26-1, 26-2")
+        if not result.empty and 'SprintsAssigned' in result.columns:
+            result['SprintsAssigned'] = result['SprintsAssigned'].apply(format_sprints_assigned_display)
+        return result
     
     def get_task_history(self, task_num: str) -> pd.DataFrame:
         """

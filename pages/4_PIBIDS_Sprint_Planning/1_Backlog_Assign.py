@@ -10,7 +10,7 @@ from datetime import datetime
 from modules.task_store import get_task_store
 from modules.sprint_calendar import get_sprint_calendar
 from modules.section_filter import exclude_forever_tickets, exclude_ad_tickets
-from components.auth import require_team_member, display_user_info, is_admin
+from components.auth import require_team_member_or_viewer, display_user_info, is_admin, is_pbids_user, is_pbids_viewer
 from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, COLUMN_DESCRIPTIONS, display_column_help, get_backlog_column_order, clean_subject_column
 from utils.exporters import export_to_excel
 from components.metrics_dashboard import display_ticket_task_metrics
@@ -18,16 +18,16 @@ from components.metrics_dashboard import display_ticket_task_metrics
 # Apply custom styles
 apply_grid_styles()
 
-# Require team member access (Admin or PIBIDS User)
-require_team_member("Backlog Assign")
+# Require team member or viewer access (Admin, PIBIDS User, or PIBIDS Viewer)
+require_team_member_or_viewer("Backlog Assign")
 
 # Display user info
 display_user_info()
 
 st.title("Backlog Assign")
 
-# Check if user can edit (Admin only)
-can_edit_backlog = is_admin()
+# Check if user can edit (Admin and PIBIDS User can edit; PIBIDS Viewer is view-only)
+can_edit_backlog = is_admin() or is_pbids_user()
 
 # Get task store and sprint calendar
 task_store = get_task_store()
@@ -56,10 +56,10 @@ with st.expander("ℹ️ How to Use This Page", expanded=False):
         """)
     else:
         st.markdown("""
-        All **open tasks** appear here. You have **read-only access**.
+        All **open tasks** appear here. You have **view-only access**.
         - View all backlog tasks and their current status
         - Track sprint assignment history in the **Sprints Assigned** column
-        - Only Admins can assign tasks to sprints
+        - Only Admin and PIBIDS Users can assign tasks to sprints
         """)
 
 # Forever ticket filter
@@ -301,7 +301,8 @@ else:
     gb.configure_column('AssignedTo', header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'],
                         headerTooltip=COLUMN_DESCRIPTIONS.get('AssignedTo', ''), hide=should_hide('AssignedTo'))
     gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS.get('Subject', 200),
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('Subject', ''), tooltipField='Subject', hide=should_hide('Subject'))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('Subject', ''), tooltipField='Details', hide=should_hide('Subject'))
+    gb.configure_column('Details', hide=True)  # Hidden - only used for Subject tooltip
     gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=COLUMN_WIDTHS['TicketCreatedDt'],
                         headerTooltip=COLUMN_DESCRIPTIONS.get('TicketCreatedDt', ''), hide=should_hide('TicketCreatedDt'))
     gb.configure_column('TaskCreatedDt', header_name='TaskCreatedDt', width=COLUMN_WIDTHS['TaskCreatedDt'],
@@ -374,7 +375,7 @@ else:
     grid_response = AgGrid(
         grid_df,
         gridOptions=grid_options,
-        height=500,
+        height=600,
         theme='streamlit',
         update_mode=GridUpdateMode.MODEL_CHANGED,
         data_return_mode=DataReturnMode.FILTERED_AND_SORTED,

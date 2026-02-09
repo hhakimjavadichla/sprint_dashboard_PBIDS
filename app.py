@@ -44,8 +44,9 @@ if not check_authentication():
 overview_page = st.Page("pages/1_Overview.py", title="Overview")
 
 # Lab Section View pages
-sprint_prioritization = st.Page("pages/2_Lab_Section_View/1_Sprint_Prioritization.py", title="Sprint Prioritization")
-sprint_feedback = st.Page("pages/2_Lab_Section_View/2_Sprint_Feedback.py", title="Sprint Feedback")
+sprint_overview = st.Page("pages/2_Lab_Section_View/1_Sprint_Overview.py", title="Sprint Overview")
+sprint_prioritization = st.Page("pages/2_Lab_Section_View/2_Sprint_Prioritization.py", title="Sprint Prioritization")
+sprint_feedback = st.Page("pages/2_Lab_Section_View/3_Sprint_Feedback.py", title="Sprint Feedback")
 
 
 # PIBIDS Sprint Planning pages (order: Backlog Assign, Sprint Update, Worklog Activity)
@@ -60,7 +61,7 @@ reports_analytics_page = st.Page("pages/9_Reports_Analytics.py", title="Reports 
 # Create navigation with sections based on user role
 nav_sections = {
     "Dashboard": [overview_page],
-    "Lab Section View": [sprint_prioritization, sprint_feedback],
+    "Lab Section View": [sprint_overview, sprint_prioritization, sprint_feedback],
     "PIBIDS Sprint Planning": [backlog_assign, sprint_update, worklog_page],
     "Under Construction": [reports_analytics_page],
 }

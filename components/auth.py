@@ -20,7 +20,7 @@ def get_user_role() -> Optional[str]:
     Get current user's role
     
     Returns:
-        User role ('Admin', 'PIBIDS User', 'Section Manager', or 'Section User') or None
+        User role ('Admin', 'PIBIDS User', 'PIBIDS Viewer', 'Section Manager', or 'Section User') or None
     """
     return st.session_state.get('user_role')
 
@@ -55,6 +55,16 @@ def is_pbids_user() -> bool:
     return get_user_role() == 'PIBIDS User'
 
 
+def is_pbids_viewer() -> bool:
+    """
+    Check if current user is a PIBIDS Viewer (Team Member - view-only access)
+    
+    Returns:
+        True if user is PIBIDS Viewer
+    """
+    return get_user_role() == 'PIBIDS Viewer'
+
+
 def is_team_member() -> bool:
     """
     Check if current user is a Team Member (Admin or PIBIDS User)
@@ -62,9 +72,10 @@ def is_team_member() -> bool:
     
     Access Hierarchy:
     1. Admin (top)
-    2. Team Member (PIBIDS User)
-    3. Section Manager
-    4. Section User (bottom)
+    2. PIBIDS User (full edit access)
+    3. PIBIDS Viewer (view-only access to all sections)
+    4. Section Manager
+    5. Section User (bottom - view-only)
     
     Returns:
         True if user is Admin or PIBIDS User
@@ -86,12 +97,12 @@ def can_edit_sprint_tasks() -> bool:
 def can_view_internal_pages() -> bool:
     """
     Check if user can view internal pages (Worklog, Reports, Feature Request)
-    Only Admin and PIBIDS Users can view these pages.
+    Admin, PIBIDS Users, and PIBIDS Viewers can view these pages.
     
     Returns:
         True if user can view internal pages
     """
-    return is_team_member()
+    return get_user_role() in ['Admin', 'PIBIDS User', 'PIBIDS Viewer']
 
 
 def is_section_manager() -> bool:
@@ -121,14 +132,15 @@ def can_edit_section() -> bool:
     Access Hierarchy for editing:
     - Admin: Can edit all sections
     - PIBIDS User (Team Member): Can edit all sections
+    - PIBIDS Viewer: View-only (cannot edit)
     - Section Manager: Can edit their own section
-    - Section User: Can edit their own section
+    - Section User: View-only (cannot edit)
     
     Returns:
         True if user can edit section data
     """
     role = get_user_role()
-    return role in ['Admin', 'PIBIDS User', 'Section Manager', 'Section User']
+    return role in ['Admin', 'PIBIDS User', 'Section Manager']
 
 
 def login(username: str, password: str) -> Tuple[bool, str]:
@@ -243,6 +255,40 @@ def require_team_member(page_name: str = "page"):
         st.stop()
     
     return True
+
+
+def require_team_member_or_viewer(page_name: str = "page"):
+    """
+    Require Team Member or PIBIDS Viewer access for a page (view-only access for viewers)
+    
+    Args:
+        page_name: Name of page for error message
+    
+    Returns:
+        True if team member or viewer, stops execution if not
+    """
+    require_auth(page_name)
+    
+    if not (is_team_member() or is_pbids_viewer()):
+        st.error(f"⛔ Access denied for {page_name}")
+        st.info("This page is restricted to PIBIDS team members only")
+        st.stop()
+    
+    return True
+
+
+def can_submit_feedback() -> bool:
+    """
+    Check if current user can submit sprint feedback
+    
+    Only Admin, PIBIDS User, and Section Manager can submit feedback.
+    PIBIDS Viewer and Section User are view-only.
+    
+    Returns:
+        True if user can submit feedback
+    """
+    role = get_user_role()
+    return role in ['Admin', 'PIBIDS User', 'Section Manager']
 
 
 def display_user_info():

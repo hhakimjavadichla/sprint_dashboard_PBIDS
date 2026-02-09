@@ -12,10 +12,11 @@ DEFAULT_USERS_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'user
 
 # Valid roles
 # Admin: Full access, can edit everything
-# PIBIDS User: Read-only, can view all sections but cannot edit
+# PIBIDS User: Full edit access to sprint planning
+# PIBIDS Viewer: View-only access to sprint planning (same visibility as PIBIDS User)
 # Section Manager: Can edit CustomerPriority in their section(s)
-# Section User: Same as Section Manager (may change later)
-VALID_ROLES = ['Admin', 'PIBIDS User', 'Section Manager', 'Section User']
+# Section User: View-only access to their section(s)
+VALID_ROLES = ['Admin', 'PIBIDS User', 'PIBIDS Viewer', 'Section Manager', 'Section User']
 
 
 class UserStore:

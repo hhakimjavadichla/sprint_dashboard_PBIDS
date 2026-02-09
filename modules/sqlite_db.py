@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   ticket_resolved_dt TEXT,
   ticket_total_time_spent REAL,
   subject TEXT,
+  details TEXT,
   customer_name TEXT,
   section TEXT,
   ticket_type TEXT,
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   ticket_num TEXT NOT NULL,
   task_status TEXT,
   subject TEXT,
+  details TEXT,
   assigned_to TEXT,
   task_assigned_dt TEXT,
   task_created_dt TEXT,
@@ -190,6 +192,8 @@ SELECT
   -- Single Subject column: use TaskSubject (each task has its own)
   -- For single-task tickets, TaskSubject equals TicketSubject anyway
   t.subject AS Subject,
+  -- Details column: full task description from iTrack (not truncated like Subject)
+  t.details AS Details,
   -- Task count per ticket for reference
   (SELECT COUNT(*) FROM tasks t2 WHERE t2.ticket_num = t.ticket_num) AS TaskCount,
   t.task_assigned_dt AS TaskAssignedDt,
@@ -256,5 +260,15 @@ def initialize_db(conn: sqlite3.Connection) -> None:
     annotation_columns = [row[1] for row in cursor.fetchall()]
     if 'non_completion_reason' not in annotation_columns:
         conn.execute("ALTER TABLE dashboard_task_annotations ADD COLUMN non_completion_reason TEXT")
+    # Migration: Add details column to tickets table if it doesn't exist
+    cursor = conn.execute("PRAGMA table_info(tickets)")
+    ticket_columns = [row[1] for row in cursor.fetchall()]
+    if 'details' not in ticket_columns:
+        conn.execute("ALTER TABLE tickets ADD COLUMN details TEXT")
+    # Migration: Add details column to tasks table if it doesn't exist
+    cursor = conn.execute("PRAGMA table_info(tasks)")
+    task_columns = [row[1] for row in cursor.fetchall()]
+    if 'details' not in task_columns:
+        conn.execute("ALTER TABLE tasks ADD COLUMN details TEXT")
     conn.executescript(VIEW_SQL)
     conn.commit()

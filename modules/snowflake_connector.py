@@ -213,6 +213,7 @@ def fetch_tasks_from_snowflake(_timestamp: str = None) -> Tuple[pd.DataFrame, bo
             t.PARENTOBJECTDISPLAYID as TicketNum,
             t.STATUS as TaskStatus,
             t.SUBJECT as Subject,
+            t.DETAILS as Details,
             t.OWNER as AssignedTo,
             t.OWNERTEAM as TaskOwnerTeam,
             t.ASSIGNEDDATETIME as TaskAssignedDt,

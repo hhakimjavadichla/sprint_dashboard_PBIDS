@@ -77,8 +77,9 @@ if 'LogDate' in all_worklogs.columns:
 else:
     all_worklogs['DerivedSprintNumber'] = None
 
-# Date range filter options - use derived sprint numbers from LogDate
-available_sprints = sorted(all_worklogs['DerivedSprintNumber'].dropna().unique(), reverse=True)
+# Date range filter options - use all sprints from calendar (including past sprints)
+all_sprints_df = calendar.get_all_sprints()
+available_sprints = sorted(all_sprints_df['SprintNumber'].dropna().unique(), reverse=True)
 available_sprints = [int(s) for s in available_sprints if s and s > 0]
 
 # Get available ticket types and sections

@@ -490,6 +490,7 @@ def _upsert_tasks(conn, tasks_df: pd.DataFrame) -> None:
         "TicketResolvedDt",
         "TicketTotalTimeSpent",
         "Subject",
+        "Details",
         "CustomerName",
         "Section",
         "TicketType",
@@ -522,6 +523,7 @@ def _upsert_tasks(conn, tasks_df: pd.DataFrame) -> None:
             continue
 
         task_subject = _clean_value(row.get("Subject"))
+        task_details = _clean_value(row.get("Details"))
         # TicketType derived from earliest task's subject per ticket
         ticket_type = _clean_value(row.get("TicketType")) or ticket_type_map.get(ticket_num, "NC")
 
@@ -533,6 +535,7 @@ def _upsert_tasks(conn, tasks_df: pd.DataFrame) -> None:
                 _to_datetime_str(row.get("TicketResolvedDt")),
                 _to_float(row.get("TicketTotalTimeSpent")),
                 task_subject,  # TicketSubject defaults to first task's subject
+                task_details,  # Full task description from iTrack
                 _clean_value(row.get("CustomerName")),
                 _clean_value(row.get("Section")),
                 ticket_type,
@@ -552,6 +555,7 @@ def _upsert_tasks(conn, tasks_df: pd.DataFrame) -> None:
                 ticket_num,
                 _clean_value(row.get("TaskStatus")),
                 task_subject,
+                task_details,  # Full task description from iTrack
                 _clean_value(row.get("AssignedTo")),
                 _to_datetime_str(row.get("TaskAssignedDt")),
                 _to_datetime_str(row.get("TaskCreatedDt")),
@@ -590,9 +594,9 @@ def _upsert_tasks(conn, tasks_df: pd.DataFrame) -> None:
         """
         INSERT OR REPLACE INTO tickets (
           ticket_num, ticket_status, ticket_created_dt, ticket_resolved_dt,
-          ticket_total_time_spent, subject, customer_name, section, ticket_type,
+          ticket_total_time_spent, subject, details, customer_name, section, ticket_type,
           ticket_source
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         ticket_rows,
     )
@@ -600,10 +604,10 @@ def _upsert_tasks(conn, tasks_df: pd.DataFrame) -> None:
     conn.executemany(
         """
         INSERT OR REPLACE INTO tasks (
-          task_num, ticket_num, task_status, subject, assigned_to, task_assigned_dt,
+          task_num, ticket_num, task_status, subject, details, assigned_to, task_assigned_dt,
           task_created_dt, task_resolved_dt, task_minutes_spent, unique_task_id,
           original_sprint_number, last_sprint_number, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         task_rows,
     )

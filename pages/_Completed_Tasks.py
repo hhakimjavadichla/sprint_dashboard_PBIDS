@@ -172,7 +172,7 @@ with tab1:
     display_cols = [
         'CompletedInSprint', 'TicketNum', 'TaskCount', '_TicketGroup', '_IsMultiTask',
         'TicketType', 'Section', 'TaskNum', 'TaskStatus', 'AssignedTo', 
-        'CustomerName', 'Subject', 'HoursEstimated', 'DaysOpen'
+        'CustomerName', 'Subject', 'Details', 'HoursEstimated', 'DaysOpen'
     ]
     
     available_cols = [col for col in display_cols if col in display_tasks.columns]
@@ -193,7 +193,8 @@ with tab1:
     gb.configure_column('TaskStatus', width=COLUMN_WIDTHS.get('TaskStatus', 100))
     gb.configure_column('AssignedTo', header_name='Assignee', width=COLUMN_WIDTHS['AssignedTo'])
     gb.configure_column('CustomerName', header_name='Customer', width=COLUMN_WIDTHS['CustomerName'])
-    gb.configure_column('Subject', width=COLUMN_WIDTHS.get('Subject', 200), tooltipField='Subject')
+    gb.configure_column('Subject', width=COLUMN_WIDTHS.get('Subject', 200), tooltipField='Details')
+    gb.configure_column('Details', hide=True)  # Hidden - only used for Subject tooltip
     gb.configure_column('HoursEstimated', header_name='Est. Hours', width=COLUMN_WIDTHS['HoursEstimated'])
     gb.configure_column('DaysOpen', header_name='Days Open', width=COLUMN_WIDTHS['DaysOpen'])
     
@@ -343,7 +344,7 @@ with tab2:
             
             display_cols = [
                 'TicketNum', 'TicketType', 'Section', 'TaskNum', 
-                'TaskStatus', 'AssignedTo', 'Subject', 'HoursEstimated', 'DaysOpen'
+                'TaskStatus', 'AssignedTo', 'Subject', 'Details', 'HoursEstimated', 'DaysOpen'
             ]
             
             available_cols = [col for col in display_cols if col in sprint_completed.columns]
@@ -357,7 +358,8 @@ with tab2:
             gb.configure_column('TaskNum', header_name='Task #', width=COLUMN_WIDTHS['TaskNum'])
             gb.configure_column('TaskStatus', width=COLUMN_WIDTHS.get('TaskStatus', 100))
             gb.configure_column('AssignedTo', header_name='Assignee', width=COLUMN_WIDTHS['AssignedTo'])
-            gb.configure_column('Subject', width=COLUMN_WIDTHS.get('Subject', 200), tooltipField='Subject')
+            gb.configure_column('Subject', width=COLUMN_WIDTHS.get('Subject', 200), tooltipField='Details')
+            gb.configure_column('Details', hide=True)  # Hidden - only used for Subject tooltip
             gb.configure_column('HoursEstimated', header_name='Est. Hours', width=COLUMN_WIDTHS['HoursEstimated'])
             gb.configure_column('DaysOpen', header_name='Days Open', width=COLUMN_WIDTHS['DaysOpen'])
             gb.configure_pagination(enabled=False)
@@ -574,7 +576,7 @@ with tab4:
         
         display_cols = [
             'CompletedInSprint', 'TicketNum', 'TicketType', 'Section', 'TaskNum',
-            'TaskStatus', 'AssignedTo', 'Subject', 'HoursEstimated', 'DaysOpen'
+            'TaskStatus', 'AssignedTo', 'Subject', 'Details', 'HoursEstimated', 'DaysOpen'
         ]
         
         available_cols = [col for col in display_cols if col in search_results.columns]
@@ -589,7 +591,8 @@ with tab4:
         gb.configure_column('TaskNum', header_name='Task #', width=COLUMN_WIDTHS['TaskNum'])
         gb.configure_column('TaskStatus', width=COLUMN_WIDTHS.get('TaskStatus', 100))
         gb.configure_column('AssignedTo', header_name='Assignee', width=COLUMN_WIDTHS['AssignedTo'])
-        gb.configure_column('Subject', width=COLUMN_WIDTHS.get('Subject', 200), tooltipField='Subject')
+        gb.configure_column('Subject', width=COLUMN_WIDTHS.get('Subject', 200), tooltipField='Details')
+        gb.configure_column('Details', hide=True)  # Hidden - only used for Subject tooltip
         gb.configure_column('HoursEstimated', header_name='Est. Hours', width=COLUMN_WIDTHS['HoursEstimated'])
         gb.configure_column('DaysOpen', header_name='Days Open', width=COLUMN_WIDTHS['DaysOpen'])
         gb.configure_pagination(enabled=False)

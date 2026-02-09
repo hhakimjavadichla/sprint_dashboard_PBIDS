@@ -801,7 +801,7 @@ if worklog_file:
         # Reset singleton to reload data
         reset_worklog_store()
         
-        st.page_link("pages/5_Worklog_Activity.py", label="View Worklog Activity Report")
+        st.page_link("pages/4_PIBIDS_Sprint_Planning/3_Worklog_Activity.py", label="View Worklog Activity Report")
     else:
         st.error(f"❌ {message}")
 else:
@@ -811,6 +811,6 @@ else:
     
     if not all_worklogs.empty:
         st.info(f"📊 Current worklog data: **{len(all_worklogs)}** entries loaded")
-        st.page_link("pages/5_Worklog_Activity.py", label="View Worklog Activity Report")
+        st.page_link("pages/4_PIBIDS_Sprint_Planning/3_Worklog_Activity.py", label="View Worklog Activity Report")
     else:
         st.caption("No worklog data imported yet.")

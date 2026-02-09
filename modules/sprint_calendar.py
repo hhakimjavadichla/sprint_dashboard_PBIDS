@@ -327,6 +327,43 @@ def format_sprint_display(sprint_name: str, start_date, end_date, sprint_number:
     return f"Sprint {sprint_id} ({start_str} - {end_str})"
 
 
+def format_sprints_assigned_display(sprints_assigned: str) -> str:
+    """
+    Convert SprintsAssigned from plain numbers (e.g., "1, 2, 3") to YY-N format (e.g., "26-1, 26-2, 26-3").
+    
+    Args:
+        sprints_assigned: Comma-separated sprint numbers (e.g., "1, 2" or "3")
+    
+    Returns:
+        Formatted string with YY-N format (e.g., "26-1, 26-2") or original string if parsing fails
+    """
+    if pd.isna(sprints_assigned) or str(sprints_assigned).strip() == '':
+        return ''
+    
+    calendar = get_sprint_calendar()
+    formatted = []
+    
+    for part in str(sprints_assigned).split(','):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            sprint_num = int(float(part))
+            sprint_info = calendar.get_sprint_by_number(sprint_num)
+            if sprint_info and sprint_info['SprintStartDt'] is not None:
+                start_date = sprint_info['SprintStartDt']
+                if isinstance(start_date, str):
+                    start_date = pd.to_datetime(start_date)
+                year_str = start_date.strftime('%y')
+                formatted.append(f"{year_str}-{sprint_num}")
+            else:
+                formatted.append(part)
+        except (ValueError, TypeError):
+            formatted.append(part)
+    
+    return ', '.join(formatted)
+
+
 def get_sprint_display_name(sprint_number: int) -> str:
     """
     Get formatted display name for a sprint by number.

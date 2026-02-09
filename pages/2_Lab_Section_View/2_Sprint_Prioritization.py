@@ -11,7 +11,7 @@ from modules.task_store import get_task_store, CLOSED_STATUSES
 from modules.section_filter import filter_by_section, get_section_summary
 from modules.sprint_calendar import get_sprint_calendar, format_sprint_display
 from datetime import datetime
-from components.auth import require_auth, display_user_info, get_user_role, get_user_section, is_admin, is_pbids_user, can_edit_section
+from components.auth import require_auth, display_user_info, get_user_role, get_user_section, is_admin, is_pbids_user, is_pbids_viewer, is_section_user, can_edit_section
 from utils.exporters import export_to_csv, export_to_excel
 from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, COLUMN_WIDTHS, display_column_help, get_backlog_column_order, clean_subject_column
 
@@ -46,10 +46,19 @@ user_sections = []
 if user_section_raw:
     user_sections = [s.strip() for s in user_section_raw.split(',') if s.strip()]
 
-# For admins and PIBIDS Users (Team Members), allow section selection with full edit access
-if is_admin() or is_pbids_user():
-    role_label = "Admin" if is_admin() else "Team Member"
-    st.info(f"**{role_label} View**: Select a section to view or see all sections (Full edit access)")
+# For admins, PIBIDS Users, and PIBIDS Viewers, allow section selection
+if is_admin() or is_pbids_user() or is_pbids_viewer():
+    if is_admin():
+        role_label = "Admin"
+        access_note = "Full edit access"
+    elif is_pbids_user():
+        role_label = "Team Member"
+        access_note = "Full edit access"
+    else:  # PIBIDS Viewer
+        role_label = "PIBIDS Viewer"
+        access_note = "View-only access"
+    
+    st.info(f"**{role_label} View**: Select a section to view or see all sections ({access_note})")
     
     sections = sorted(sprint_df['Section'].dropna().unique().tolist())
     selected_section = st.selectbox(
@@ -76,7 +85,8 @@ else:
     
     display_sections = user_sections
     role_label = "Section Manager" if user_role == 'Section Manager' else "Section User"
-    st.info(f"👁️ **{role_label}**: Viewing tasks for **{', '.join(user_sections)}**")
+    access_note = "Edit access" if user_role == 'Section Manager' else "View-only access"
+    st.info(f"👁️ **{role_label}**: Viewing tasks for **{', '.join(user_sections)}** ({access_note})")
 
 st.divider()
 
@@ -212,6 +222,31 @@ if not filtered_df.empty:
     status_col = 'TaskStatus' if 'TaskStatus' in display_df.columns else 'Status'
     display_df['_is_open'] = ~display_df[status_col].isin(CLOSED_STATUSES) if status_col in display_df.columns else True
     
+    # Define column view presets
+    COLUMN_VIEWS = {
+        'All Columns': None,
+        'Priority Focus': ['TicketNum', 'TaskNum', 'Subject', sv_assignee_col,
+                           'CustomerPriority', 'FinalPriority', 'GoalType', 'DaysOpen', 'TaskStatus'],
+        'Dependencies': ['TicketNum', 'TaskNum', 'Subject', sv_assignee_col,
+                         'DependencyOn', 'DependenciesLead', 'DependencySecured', 'Comments'],
+        'Task Details': ['TicketNum', 'TaskNum', 'Subject', sv_assignee_col, 'Section',
+                         'CustomerName', 'TicketType', 'TaskStatus', 'DaysOpen', 'TicketCreatedDt'],
+    }
+    
+    selected_view = st.radio(
+        "Column View: Select a preset to show only relevant columns",
+        options=list(COLUMN_VIEWS.keys()),
+        horizontal=True,
+        key="sprint_prioritization_view_selector"
+    )
+    
+    view_columns = COLUMN_VIEWS[selected_view]
+    
+    def should_hide(col_name):
+        if view_columns is None:
+            return False
+        return col_name not in view_columns
+    
     # Configure AgGrid with built-in column filtering (click column header menu)
     gb = GridOptionsBuilder.from_dataframe(display_df)
     gb.configure_default_column(resizable=True, filterable=True, sortable=True)
@@ -222,28 +257,29 @@ if not filtered_df.empty:
     gb.configure_column('_is_open', hide=True)
     
     # Sprint columns
-    gb.configure_column('SprintNumber', header_name='SprintNumber', width=COLUMN_WIDTHS.get('SprintNumber', 100))
-    gb.configure_column('SprintName', header_name='SprintName', width=COLUMN_WIDTHS.get('SprintName', 120))
-    gb.configure_column('SprintStartDt', header_name='SprintStartDt', width=COLUMN_WIDTHS.get('SprintStartDt', 100))
-    gb.configure_column('SprintEndDt', header_name='SprintEndDt', width=COLUMN_WIDTHS.get('SprintEndDt', 100))
-    gb.configure_column('TaskOrigin', header_name='TaskOrigin', width=COLUMN_WIDTHS.get('TaskOrigin', 90))
-    gb.configure_column('SprintsAssigned', header_name='SprintsAssigned', width=COLUMN_WIDTHS.get('SprintsAssigned', 130))
+    gb.configure_column('SprintNumber', header_name='SprintNumber', width=COLUMN_WIDTHS.get('SprintNumber', 100), hide=should_hide('SprintNumber'))
+    gb.configure_column('SprintName', header_name='SprintName', width=COLUMN_WIDTHS.get('SprintName', 120), hide=should_hide('SprintName'))
+    gb.configure_column('SprintStartDt', header_name='SprintStartDt', width=COLUMN_WIDTHS.get('SprintStartDt', 100), hide=should_hide('SprintStartDt'))
+    gb.configure_column('SprintEndDt', header_name='SprintEndDt', width=COLUMN_WIDTHS.get('SprintEndDt', 100), hide=should_hide('SprintEndDt'))
+    gb.configure_column('TaskOrigin', header_name='TaskOrigin', width=COLUMN_WIDTHS.get('TaskOrigin', 90), hide=should_hide('TaskOrigin'))
+    gb.configure_column('SprintsAssigned', header_name='SprintsAssigned', width=COLUMN_WIDTHS.get('SprintsAssigned', 130), hide=should_hide('SprintsAssigned'))
     
     # Ticket/Task columns
-    gb.configure_column('TicketNum', header_name='TicketNum', width=COLUMN_WIDTHS['TicketNum'])
-    gb.configure_column('TaskCount', header_name='Task#', width=COLUMN_WIDTHS.get('TaskCount', 70))
-    gb.configure_column('TicketType', header_name='TicketType', width=COLUMN_WIDTHS['TicketType'])
-    gb.configure_column('Section', header_name='Section', width=COLUMN_WIDTHS.get('Section', 100))
-    gb.configure_column('CustomerName', header_name='CustomerName', width=COLUMN_WIDTHS.get('CustomerName', 120))
-    gb.configure_column('TaskNum', header_name='TaskNum', width=COLUMN_WIDTHS['TaskNum'])
-    gb.configure_column('TaskStatus', header_name='TaskStatus', width=COLUMN_WIDTHS.get('TaskStatus', 100))
-    gb.configure_column('TicketStatus', header_name='TicketStatus', width=COLUMN_WIDTHS.get('TicketStatus', 100))
-    gb.configure_column(sv_assignee_col, header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'])
+    gb.configure_column('TicketNum', header_name='TicketNum', width=COLUMN_WIDTHS['TicketNum'], hide=should_hide('TicketNum'))
+    gb.configure_column('TaskCount', header_name='Task#', width=COLUMN_WIDTHS.get('TaskCount', 70), hide=should_hide('TaskCount'))
+    gb.configure_column('TicketType', header_name='TicketType', width=COLUMN_WIDTHS['TicketType'], hide=should_hide('TicketType'))
+    gb.configure_column('Section', header_name='Section', width=COLUMN_WIDTHS.get('Section', 100), hide=should_hide('Section'))
+    gb.configure_column('CustomerName', header_name='CustomerName', width=COLUMN_WIDTHS.get('CustomerName', 120), hide=should_hide('CustomerName'))
+    gb.configure_column('TaskNum', header_name='TaskNum', width=COLUMN_WIDTHS['TaskNum'], hide=should_hide('TaskNum'))
+    gb.configure_column('TaskStatus', header_name='TaskStatus', width=COLUMN_WIDTHS.get('TaskStatus', 100), hide=should_hide('TaskStatus'))
+    gb.configure_column('TicketStatus', header_name='TicketStatus', width=COLUMN_WIDTHS.get('TicketStatus', 100), hide=should_hide('TicketStatus'))
+    gb.configure_column(sv_assignee_col, header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'], hide=should_hide(sv_assignee_col))
     gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS.get('Subject', 200), 
-                        tooltipField='Subject')
-    gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=COLUMN_WIDTHS.get('TicketCreatedDt', 110))
-    gb.configure_column('TaskCreatedDt', header_name='TaskCreatedDt', width=COLUMN_WIDTHS.get('TaskCreatedDt', 110))
-    gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'])
+                        tooltipField='Details', hide=should_hide('Subject'))
+    gb.configure_column('Details', hide=True)  # Hidden - only used for Subject tooltip
+    gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=COLUMN_WIDTHS.get('TicketCreatedDt', 110), hide=should_hide('TicketCreatedDt'))
+    gb.configure_column('TaskCreatedDt', header_name='TaskCreatedDt', width=COLUMN_WIDTHS.get('TaskCreatedDt', 110), hide=should_hide('TaskCreatedDt'))
+    gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'], hide=should_hide('DaysOpen'))
     
     # Priority is editable ONLY for open tasks AND only for users who can edit
     # Admin and PIBIDS Users can edit all sections, Section Manager/User can edit their own section
@@ -257,12 +293,13 @@ if not filtered_df.empty:
         gb.configure_column('CustomerPriority', header_name='✏️ CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'], 
                             editable=priority_editable,
                             cellEditor='agSelectCellEditor',
-                            cellEditorParams={'values': PRIORITY_VALUES})
+                            cellEditorParams={'values': PRIORITY_VALUES},
+                            hide=should_hide('CustomerPriority'))
     else:
         # Read-only mode
-        gb.configure_column('CustomerPriority', header_name='CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'])
-    gb.configure_column('FinalPriority', header_name='FinalPriority', width=COLUMN_WIDTHS.get('FinalPriority', 100))
-    gb.configure_column('GoalType', header_name='GoalType', width=COLUMN_WIDTHS.get('GoalType', 90))
+        gb.configure_column('CustomerPriority', header_name='CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'], hide=should_hide('CustomerPriority'))
+    gb.configure_column('FinalPriority', header_name='FinalPriority', width=COLUMN_WIDTHS.get('FinalPriority', 100), hide=should_hide('FinalPriority'))
+    gb.configure_column('GoalType', header_name='GoalType', width=COLUMN_WIDTHS.get('GoalType', 90), hide=should_hide('GoalType'))
     
     # Dependency, DependencyLead(s), Comments are editable for Section Manager/User
     if user_can_edit:
@@ -271,29 +308,32 @@ if not filtered_df.empty:
         gb.configure_column('DependencyOn', header_name='✏️ Dependency', width=COLUMN_WIDTHS.get('DependencyOn', 110),
                             editable=priority_editable,
                             cellEditor='agSelectCellEditor',
-                            cellEditorParams={'values': DEPENDENCY_VALUES})
+                            cellEditorParams={'values': DEPENDENCY_VALUES},
+                            hide=should_hide('DependencyOn'))
         gb.configure_column('DependenciesLead', header_name='✏️ DependencyLead(s)', width=COLUMN_WIDTHS.get('DependenciesLead', 120),
                             editable=priority_editable,
                             tooltipField='DependenciesLead',
                             cellEditor='agLargeTextCellEditor',
                             cellEditorPopup=True,
-                            cellEditorParams={'maxLength': 1000, 'rows': 5, 'cols': 40})
+                            cellEditorParams={'maxLength': 1000, 'rows': 5, 'cols': 40},
+                            hide=should_hide('DependenciesLead'))
         gb.configure_column('Comments', header_name='✏️ Comments', width=COLUMN_WIDTHS['Comments'],
                             editable=priority_editable,
                             tooltipField='Comments',
                             cellEditor='agLargeTextCellEditor',
                             cellEditorPopup=True,
-                            cellEditorParams={'maxLength': 2000, 'rows': 5, 'cols': 50})
+                            cellEditorParams={'maxLength': 2000, 'rows': 5, 'cols': 50},
+                            hide=should_hide('Comments'))
     else:
         # Read-only mode
-        gb.configure_column('DependencyOn', header_name='Dependency', width=COLUMN_WIDTHS.get('DependencyOn', 110))
+        gb.configure_column('DependencyOn', header_name='Dependency', width=COLUMN_WIDTHS.get('DependencyOn', 110), hide=should_hide('DependencyOn'))
         gb.configure_column('DependenciesLead', header_name='DependencyLead(s)', width=COLUMN_WIDTHS.get('DependenciesLead', 120),
-                            tooltipField='DependenciesLead')
-        gb.configure_column('Comments', header_name='Comments', width=COLUMN_WIDTHS['Comments'], tooltipField='Comments')
-    gb.configure_column('DependencySecured', header_name='DependencySecured', width=COLUMN_WIDTHS.get('DependencySecured', 130))
-    gb.configure_column('HoursEstimated', header_name='HoursEstimated', width=COLUMN_WIDTHS['HoursEstimated'])
-    gb.configure_column('TaskHoursSpent', header_name='TaskHoursSpent', width=COLUMN_WIDTHS.get('TaskHoursSpent', 110))
-    gb.configure_column('TicketHoursSpent', header_name='TicketHoursSpent', width=COLUMN_WIDTHS.get('TicketHoursSpent', 120))
+                            tooltipField='DependenciesLead', hide=should_hide('DependenciesLead'))
+        gb.configure_column('Comments', header_name='Comments', width=COLUMN_WIDTHS['Comments'], tooltipField='Comments', hide=should_hide('Comments'))
+    gb.configure_column('DependencySecured', header_name='DependencySecured', width=COLUMN_WIDTHS.get('DependencySecured', 130), hide=should_hide('DependencySecured'))
+    gb.configure_column('HoursEstimated', header_name='HoursEstimated', width=COLUMN_WIDTHS['HoursEstimated'], hide=should_hide('HoursEstimated'))
+    gb.configure_column('TaskHoursSpent', header_name='TaskHoursSpent', width=COLUMN_WIDTHS.get('TaskHoursSpent', 110), hide=should_hide('TaskHoursSpent'))
+    gb.configure_column('TicketHoursSpent', header_name='TicketHoursSpent', width=COLUMN_WIDTHS.get('TicketHoursSpent', 120), hide=should_hide('TicketHoursSpent'))
     gb.configure_pagination(enabled=False)
     
     # Row styling for multi-task ticket groups (alternating colors)
@@ -363,7 +403,7 @@ if not filtered_df.empty:
         with col_info:
             st.caption("Editable fields: CustomerPriority, Dependency, DependencyLead(s), Comments. Only open tasks can be edited.")
     else:
-        st.caption("🔒 **Read-only view** - PIBIDS Users cannot edit task data.")
+        st.caption("🔒 **View-only mode** - You do not have edit permissions for this page.")
     
     # Export section - exports current filtered view
     col_export1, col_export2 = st.columns([2, 6])
@@ -446,7 +486,7 @@ if len(at_risk_df) > 0:
     
     gb_ar = GridOptionsBuilder.from_dataframe(at_risk_display)
     gb_ar.configure_default_column(resizable=True, sortable=True)
-    gb_ar.configure_column('Subject', width=180, tooltipField='Subject')
+    gb_ar.configure_column('Subject', width=180, tooltipField='Details')
     gb_ar.configure_column(ar_assignee_col, header_name='Assignee', width=120)
     grid_options_ar = gb_ar.build()
     
@@ -464,12 +504,12 @@ with st.expander("About This View"):
     section_display = ", ".join(display_sections) if display_sections else "All Sections"
     viewing_msg = "Viewing all sections (Admin mode)" if user_role == 'Admin' and len(display_sections) > 1 else f"Viewing tasks for **{section_display}**"
     
-    if is_pbids_user():
-        edit_msg = "This is a read-only view."
-    elif is_admin() or user_role in ['Section Manager', 'Section User']:
+    if is_pbids_viewer() or is_section_user():
+        edit_msg = "This is a **view-only** page for your role."
+    elif is_admin() or is_pbids_user() or user_role == 'Section Manager':
         edit_msg = "You can edit **CustomerPriority**, **Dependency**, **DependencyLead(s)**, and **Comments** for open tasks."
     else:
-        edit_msg = "This is a read-only view."
+        edit_msg = "This is a view-only page."
     
     st.markdown(f"""
     {viewing_msg}

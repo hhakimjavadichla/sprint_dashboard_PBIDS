@@ -163,7 +163,8 @@ with tab1:
     gb.configure_column('TaskStatus', header_name='TaskStatus', width=COLUMN_WIDTHS.get('TaskStatus', 100))
     gb.configure_column('TicketStatus', header_name='TicketStatus', width=COLUMN_WIDTHS.get('TicketStatus', 100))
     gb.configure_column(tab1_assignee_col, header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'])
-    gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS.get('Subject', 200), tooltipField='Subject')
+    gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS.get('Subject', 200), tooltipField='Details')
+    gb.configure_column('Details', hide=True)  # Hidden - only used for Subject tooltip
     gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=COLUMN_WIDTHS.get('TicketCreatedDt', 110))
     gb.configure_column('TaskCreatedDt', header_name='TaskCreatedDt', width=COLUMN_WIDTHS.get('TaskCreatedDt', 110))
     gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'])
@@ -282,7 +283,8 @@ with tab2:
                 gb.configure_column('TicketType', header_name='TicketType', width=COLUMN_WIDTHS['TicketType'])
                 gb.configure_column('AssignedDate', header_name='AssignedDate', width=COLUMN_WIDTHS.get('AssignedDate', 115))
                 gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'])
-                gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS.get('Subject', 200), tooltipField='Subject')
+                gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS.get('Subject', 200), tooltipField='Details')
+                gb.configure_column('Details', hide=True)  # Hidden - only used for Subject tooltip
                 gb.configure_column('TaskNum', hide=True)  # Hidden but needed for reference
                 
                 grid_options = gb.build()

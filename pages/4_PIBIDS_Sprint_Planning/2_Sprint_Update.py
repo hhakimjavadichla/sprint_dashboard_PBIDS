@@ -12,7 +12,7 @@ from modules.sprint_calendar import get_sprint_calendar, format_sprint_display
 from modules.worklog_store import get_worklog_store
 from modules.section_filter import exclude_forever_tickets, exclude_ad_tickets
 from modules.capacity_validator import validate_capacity, get_capacity_dataframe
-from components.auth import require_team_member, display_user_info, is_admin
+from components.auth import require_team_member_or_viewer, display_user_info, is_admin, is_pbids_user, is_pbids_viewer
 from utils.grid_styles import apply_grid_styles, get_custom_css, STATUS_CELL_STYLE, PRIORITY_CELL_STYLE, DAYS_OPEN_CELL_STYLE, TASK_ORIGIN_CELL_STYLE, COLUMN_WIDTHS, get_column_width, COLUMN_DESCRIPTIONS, display_column_help, get_display_column_order, clean_subject_column
 from utils.constants import VALID_SECTIONS
 from utils.exporters import export_to_excel
@@ -24,36 +24,48 @@ apply_grid_styles()
 st.title("Sprint Update")
 st.caption("_PIBIDS Team_")
 
-# Require team member access (Admin or PIBIDS User)
-require_team_member("Sprint Planning")
+# Require team member or viewer access (Admin, PIBIDS User, or PIBIDS Viewer)
+require_team_member_or_viewer("Sprint Planning")
 display_user_info()
+
+# Check if user can edit (Admin and PIBIDS User can edit; PIBIDS Viewer is view-only)
+can_edit_sprint = is_admin() or is_pbids_user()
 
 # Instructions at the top
 with st.expander("ℹ️ How to Use This Page", expanded=False):
-    st.markdown("""
-    ### Planning Workflow
-    
-    1. **Edit cells directly** in the table below (double-click to edit)
-    2. **All fields are editable by admin**
-    3. **Click "Save Changes"** button to persist your edits
-    4. **Monitor capacity** - warnings appear if anyone exceeds 52 hours
-    
-    ### Field Types
-    - **Dropdown fields:** SprintNumber, CustomerPriority (0-5), DependencySecured, Status, TicketType, Section
-    - **Numeric fields:** DaysOpen, HoursEstimated, HoursSpent
-    - **Free text fields:** All other fields
-    
-    ### Pre-populated Fields (from iTrack or calculated)
-    - **DaysOpen** - Days since ticket creation (calculated)
-    - **HoursSpent** - From iTrack worklog (TaskMinutesSpent / 60)
-    - **TicketType, Section, CustomerName, Status, AssignedTo, Subject** - From iTrack upload
-    - **TicketNum, TaskNum, TicketCreatedDt, TaskCreatedDt** - From iTrack upload
-    
-    ### Tips
-    - Changing SprintNumber moves the task to that sprint on save
-    - Use filters to focus on specific sections or assignees
-    - Capacity validation happens automatically
-    """)
+    if can_edit_sprint:
+        st.markdown("""
+        ### Planning Workflow
+        
+        1. **Edit cells directly** in the table below (double-click to edit)
+        2. **All fields are editable by Admin and PIBIDS Users**
+        3. **Click "Save Changes"** button to persist your edits
+        4. **Monitor capacity** - warnings appear if anyone exceeds 52 hours
+        
+        ### Field Types
+        - **Dropdown fields:** SprintNumber, CustomerPriority (0-5), DependencySecured, Status, TicketType, Section
+        - **Numeric fields:** DaysOpen, HoursEstimated, HoursSpent
+        - **Free text fields:** All other fields
+        
+        ### Pre-populated Fields (from iTrack or calculated)
+        - **DaysOpen** - Days since ticket creation (calculated)
+        - **HoursSpent** - From iTrack worklog (TaskMinutesSpent / 60)
+        - **TicketType, Section, CustomerName, Status, AssignedTo, Subject** - From iTrack upload
+        - **TicketNum, TaskNum, TicketCreatedDt, TaskCreatedDt** - From iTrack upload
+        
+        ### Tips
+        - Changing SprintNumber moves the task to that sprint on save
+        - Use filters to focus on specific sections or assignees
+        - Capacity validation happens automatically
+        """)
+    else:
+        st.markdown("""
+        ### View-Only Access
+        
+        You have **view-only access** to this page.
+        - View sprint tasks and their current planning status
+        - Only Admin and PIBIDS Users can edit sprint planning fields
+        """)
 
 # Load modules
 task_store = get_task_store()
@@ -249,18 +261,12 @@ if not filtered_tasks.empty:
         if col not in edit_df.columns:
             edit_df[col] = None
     
-    # Calculate TaskHoursSpent from TaskMinutesSpent (task-level)
-    edit_df['TaskHoursSpent'] = edit_df['TaskMinutesSpent'].apply(
-        lambda x: round(float(x) / 60, 2) if pd.notna(x) and x != '' else None
-    )
-    
-    # Calculate TicketHoursSpent from TicketTotalTimeSpent (ticket-level)
-    if 'TicketTotalTimeSpent' in edit_df.columns:
-        edit_df['TicketHoursSpent'] = edit_df['TicketTotalTimeSpent'].apply(
-            lambda x: round(float(x) / 60, 2) if pd.notna(x) and x != '' else None
-        )
-    else:
-        edit_df['TicketHoursSpent'] = None
+    # TaskHoursSpent and TicketHoursSpent are calculated from worklog data
+    # by task_store._calculate_hours_from_worklog() - do not overwrite here
+    if 'TaskHoursSpent' not in edit_df.columns:
+        edit_df['TaskHoursSpent'] = 0.0
+    if 'TicketHoursSpent' not in edit_df.columns:
+        edit_df['TicketHoursSpent'] = 0.0
     
     # Ensure FinalPriority column exists
     # Default is Null - admin must set it explicitly
@@ -425,9 +431,12 @@ if not filtered_tasks.empty:
     gb.configure_column('_TicketGroup', hide=True)
     gb.configure_column('_IsMultiTask', hide=True)
     
+    # Editable prefix for column names (only show if user can edit)
+    edit_prefix = '✏️ ' if can_edit_sprint else ''
+    
     # Configure columns - editable columns marked with prefix
     # Sprint fields - combined into single column, keep SprintNumber editable but hidden
-    gb.configure_column('SprintNumber', header_name='SprintNumber', width=COLUMN_WIDTHS['SprintNumber'], editable=True,
+    gb.configure_column('SprintNumber', header_name='SprintNumber', width=COLUMN_WIDTHS['SprintNumber'], editable=can_edit_sprint,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('SprintNumber', ''),
                         cellEditor='agSelectCellEditor',
                         cellEditorParams={'values': all_sprint_numbers},
@@ -466,7 +475,8 @@ if not filtered_tasks.empty:
     gb.configure_column('AssignedTo', header_name='AssignedTo', width=COLUMN_WIDTHS['AssignedTo'], editable=False,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('AssignedTo', ''), hide=should_hide('AssignedTo'))
     gb.configure_column('Subject', header_name='Subject', width=COLUMN_WIDTHS.get('Subject', 200), editable=False,
-                        headerTooltip=COLUMN_DESCRIPTIONS.get('Subject', ''), tooltipField='Subject', hide=should_hide('Subject'))
+                        headerTooltip=COLUMN_DESCRIPTIONS.get('Subject', ''), tooltipField='Details', hide=should_hide('Subject'))
+    gb.configure_column('Details', hide=True)  # Hidden - only used for Subject tooltip
     gb.configure_column('TicketCreatedDt', header_name='TicketCreatedDt', width=COLUMN_WIDTHS['TicketCreatedDt'], editable=False,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('TicketCreatedDt', ''), hide=should_hide('TicketCreatedDt'))
     gb.configure_column('TaskCreatedDt', header_name='TaskCreatedDt', width=COLUMN_WIDTHS['TaskCreatedDt'], editable=False,
@@ -476,39 +486,39 @@ if not filtered_tasks.empty:
     gb.configure_column('DaysOpen', header_name='DaysOpen', width=COLUMN_WIDTHS['DaysOpen'], editable=False, 
                         headerTooltip=COLUMN_DESCRIPTIONS.get('DaysOpen', ''),
                         type=['numericColumn'], hide=should_hide('DaysOpen'))
-    gb.configure_column('CustomerPriority', header_name='✏️ CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'], editable=True,
+    gb.configure_column('CustomerPriority', header_name=f'{edit_prefix}CustomerPriority', width=COLUMN_WIDTHS['CustomerPriority'], editable=can_edit_sprint,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('CustomerPriority', ''),
                         cellEditor='agSelectCellEditor',
                         cellEditorParams={'values': PRIORITY_VALUES}, hide=should_hide('CustomerPriority'))
-    gb.configure_column('FinalPriority', header_name='✏️ FinalPriority', width=COLUMN_WIDTHS['FinalPriority'], editable=True,
+    gb.configure_column('FinalPriority', header_name=f'{edit_prefix}FinalPriority', width=COLUMN_WIDTHS['FinalPriority'], editable=can_edit_sprint,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('FinalPriority', ''),
                         cellEditor='agSelectCellEditor',
                         cellEditorParams={'values': PRIORITY_VALUES}, hide=should_hide('FinalPriority'))
-    gb.configure_column('GoalType', header_name='✏️ GoalType', width=COLUMN_WIDTHS['GoalType'], editable=True,
+    gb.configure_column('GoalType', header_name=f'{edit_prefix}GoalType', width=COLUMN_WIDTHS['GoalType'], editable=can_edit_sprint,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('GoalType', ''),
                         cellEditor='agSelectCellEditor',
                         cellEditorParams={'values': ['', 'Mandatory', 'Stretch']}, hide=should_hide('GoalType'))
-    gb.configure_column('DependencyOn', header_name='✏️ Dependency', width=COLUMN_WIDTHS['DependencyOn'], editable=True,
+    gb.configure_column('DependencyOn', header_name=f'{edit_prefix}Dependency', width=COLUMN_WIDTHS['DependencyOn'], editable=can_edit_sprint,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('DependencyOn', ''),
                         cellEditor='agSelectCellEditor',
                         cellEditorParams={'values': DEPENDENCY_VALUES}, hide=should_hide('DependencyOn'))
-    gb.configure_column('DependenciesLead', header_name='✏️ DependencyLead(s)', width=COLUMN_WIDTHS['DependenciesLead'], editable=True,
+    gb.configure_column('DependenciesLead', header_name=f'{edit_prefix}DependencyLead(s)', width=COLUMN_WIDTHS['DependenciesLead'], editable=can_edit_sprint,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('DependenciesLead', ''),
                         tooltipField='DependenciesLead',
                         cellEditor='agLargeTextCellEditor',
                         cellEditorPopup=True,
                         cellEditorParams={'maxLength': 1000, 'rows': 10, 'cols': 50}, hide=should_hide('DependenciesLead'))
-    gb.configure_column('DependencySecured', header_name='✏️ DependencySecured', width=COLUMN_WIDTHS['DependencySecured'], editable=True,
+    gb.configure_column('DependencySecured', header_name=f'{edit_prefix}DependencySecured', width=COLUMN_WIDTHS['DependencySecured'], editable=can_edit_sprint,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('DependencySecured', ''),
                         cellEditor='agSelectCellEditor',
                         cellEditorParams={'values': DEPENDENCY_SECURED_VALUES}, hide=should_hide('DependencySecured'))
-    gb.configure_column('Comments', header_name='✏️ Comments', width=COLUMN_WIDTHS['Comments'], editable=True,
+    gb.configure_column('Comments', header_name=f'{edit_prefix}Comments', width=COLUMN_WIDTHS['Comments'], editable=can_edit_sprint,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('Comments', ''),
                         tooltipField='Comments',
                         cellEditor='agLargeTextCellEditor',
                         cellEditorPopup=True,
                         cellEditorParams={'maxLength': 1000, 'rows': 10, 'cols': 50}, hide=should_hide('Comments'))
-    gb.configure_column('HoursEstimated', header_name='✏️ HoursEstimated', width=COLUMN_WIDTHS['HoursEstimated'], editable=True,
+    gb.configure_column('HoursEstimated', header_name=f'{edit_prefix}HoursEstimated', width=COLUMN_WIDTHS['HoursEstimated'], editable=can_edit_sprint,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('HoursEstimated', ''), type=['numericColumn'], hide=should_hide('HoursEstimated'))
     gb.configure_column('TaskHoursSpent', header_name='TaskHoursSpent', width=COLUMN_WIDTHS['TaskHoursSpent'], editable=False,
                         headerTooltip=COLUMN_DESCRIPTIONS.get('TaskHoursSpent', ''), type=['numericColumn'], hide=should_hide('TaskHoursSpent'))
@@ -518,7 +528,7 @@ if not filtered_tasks.empty:
     # Sprint Completion Tracking columns
     gb.configure_column('CompletedThisSprint', header_name='CompletedThisSprint', width=140, editable=False,
                         headerTooltip='Auto-calculated: Yes if task completed within sprint window', hide=should_hide('CompletedThisSprint'))
-    gb.configure_column('NonCompletionReason', header_name='✏️ NonCompletionReason', width=200, editable=True,
+    gb.configure_column('NonCompletionReason', header_name=f'{edit_prefix}NonCompletionReason', width=200, editable=can_edit_sprint,
                         headerTooltip='Editable: Document why task was not completed in this sprint',
                         tooltipField='NonCompletionReason',
                         cellEditor='agLargeTextCellEditor',
@@ -546,7 +556,10 @@ if not filtered_tasks.empty:
     grid_options['getRowStyle'] = row_style_jscode
     grid_options['enableBrowserTooltips'] = False  # Disable browser tooltips to avoid double tooltip
     
-    st.caption("✏️ = Editable column (double-click to edit). Changes are saved when you click 'Save Changes' below.")
+    if can_edit_sprint:
+        st.caption("✏️ = Editable column (double-click to edit). Changes are saved when you click 'Save Changes' below.")
+    else:
+        st.caption("🔒 **View-only mode** - You do not have edit permissions for this page.")
     
     # Column descriptions help
     display_column_help(title="❓ Column Descriptions")
@@ -567,91 +580,105 @@ if not filtered_tasks.empty:
     # Get edited data
     edited_df = pd.DataFrame(grid_response['data'])
     
-    # Save button - right below the table
-    col_save1, col_save2, col_save3 = st.columns([1, 2, 1])
-    
-    with col_save1:
-        if st.button("💾 Save Changes", type="primary", use_container_width=True, key="save_btn_top"):
-            editable_fields = ['CustomerPriority', 'FinalPriority', 'HoursEstimated', 
-                             'GoalType', 'DependencyOn', 'DependenciesLead', 'DependencySecured', 'Comments',
-                             'NonCompletionReason']
-            sprint_changes = 0
-            
-            # Handle SprintNumber changes - modifies SprintsAssigned column
-            # Blank/empty = "remove from THIS sprint only" (task may stay in other sprints)
-            for _, row in edited_df.iterrows():
-                task_num = row.get('TaskNum')
-                if pd.isna(task_num):
-                    continue
+    # Save button - right below the table (only for users who can edit)
+    if can_edit_sprint:
+        col_save1, col_save2, col_save3 = st.columns([1, 2, 1])
+        
+        with col_save1:
+            if st.button("💾 Save Changes", type="primary", use_container_width=True, key="save_btn_top"):
+                editable_fields = ['CustomerPriority', 'FinalPriority', 'HoursEstimated', 
+                                 'GoalType', 'DependencyOn', 'DependenciesLead', 'DependencySecured', 'Comments',
+                                 'NonCompletionReason']
+                sprint_changes = 0
                 
-                if 'SprintNumber' in row.index:
-                    new_sprint_num = row['SprintNumber']
-                    new_sprint_str = str(new_sprint_num).strip() if pd.notna(new_sprint_num) else ''
+                # Handle SprintNumber changes - modifies SprintsAssigned column
+                # Blank/empty = "remove from THIS sprint only" (task may stay in other sprints)
+                for _, row in edited_df.iterrows():
+                    task_num = row.get('TaskNum')
+                    if pd.isna(task_num):
+                        continue
                     
-                    # Blank or 'nan' means remove from this sprint
-                    if new_sprint_str == '' or new_sprint_str.lower() == 'nan':
-                        success, msg = task_store.remove_task_from_sprint(str(task_num), selected_sprint_num)
-                        if success:
-                            sprint_changes += 1
-                    else:
-                        # Check if moving to different sprint
-                        try:
-                            new_sprint_int = int(float(new_sprint_str))  # Handle '1.0' format
-                            if new_sprint_int != selected_sprint_num:
-                                task_store.remove_task_from_sprint(str(task_num), selected_sprint_num)
-                                task_store.assign_task_to_sprint(str(task_num), new_sprint_int)
+                    if 'SprintNumber' in row.index:
+                        new_sprint_num = row['SprintNumber']
+                        new_sprint_str = str(new_sprint_num).strip() if pd.notna(new_sprint_num) else ''
+                        
+                        # Blank or 'nan' means remove from this sprint
+                        if new_sprint_str == '' or new_sprint_str.lower() == 'nan':
+                            success, msg = task_store.remove_task_from_sprint(str(task_num), selected_sprint_num)
+                            if success:
                                 sprint_changes += 1
-                        except (ValueError, TypeError):
-                            pass  # Invalid value, skip
-            
-            # Build updates list for editable fields
-            updates = []
-            for _, row in edited_df.iterrows():
-                if pd.notna(row.get('TaskNum')):
-                    update = {'TaskNum': row['TaskNum']}
-                    for field in editable_fields:
-                        if field in row.index:
-                            update[field] = row[field]
-                    updates.append(update)
-            
-            # Use centralized update method
-            success, errors = task_store.update_tasks(updates)
-            
-            # If only sprint changes were made (no editable field changes), save manually
-            if sprint_changes > 0 and success == 0:
-                task_store.save()
-            
-            if success > 0 or sprint_changes > 0:
-                msg = f"✅ Successfully saved {success} task(s)"
-                if sprint_changes > 0:
-                    msg += f" ({sprint_changes} sprint assignment(s) changed)"
-                st.success(msg)
+                        else:
+                            # Check if moving to different sprint
+                            try:
+                                new_sprint_int = int(float(new_sprint_str))  # Handle '1.0' format
+                                if new_sprint_int != selected_sprint_num:
+                                    task_store.remove_task_from_sprint(str(task_num), selected_sprint_num)
+                                    task_store.assign_task_to_sprint(str(task_num), new_sprint_int)
+                                    sprint_changes += 1
+                            except (ValueError, TypeError):
+                                pass  # Invalid value, skip
                 
-                # Recalculate capacity
-                updated_sprint = task_store.get_sprint_tasks(selected_sprint_num)
-                new_capacity = validate_capacity(updated_sprint)
+                # Build updates list for editable fields
+                updates = []
+                for _, row in edited_df.iterrows():
+                    if pd.notna(row.get('TaskNum')):
+                        update = {'TaskNum': row['TaskNum']}
+                        for field in editable_fields:
+                            if field in row.index:
+                                update[field] = row[field]
+                        updates.append(update)
                 
-                if new_capacity['overloaded']:
-                    st.warning(f"⚠️ Capacity Alert: {len(new_capacity['overloaded'])} people now overloaded")
+                # Use centralized update method
+                success, errors = task_store.update_tasks(updates)
                 
-                st.rerun()
-            elif errors:
-                st.error(f"❌ Errors: {', '.join(errors[:3])}")
-    
-    with col_save2:
-        st.caption("Changes are only saved when you click 'Save Changes'")
-    
-    with col_save3:
-        # Export button
-        from utils.exporters import export_to_excel
-        excel_data = export_to_excel(edited_df)
-        st.download_button(
-            "📥 Export",
-            excel_data,
-            f"sprint_{selected_sprint_num}_planning.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
+                # If only sprint changes were made (no editable field changes), save manually
+                if sprint_changes > 0 and success == 0:
+                    task_store.save()
+                
+                if success > 0 or sprint_changes > 0:
+                    msg = f"✅ Successfully saved {success} task(s)"
+                    if sprint_changes > 0:
+                        msg += f" ({sprint_changes} sprint assignment(s) changed)"
+                    st.success(msg)
+                    
+                    # Recalculate capacity
+                    updated_sprint = task_store.get_sprint_tasks(selected_sprint_num)
+                    new_capacity = validate_capacity(updated_sprint)
+                    
+                    if new_capacity['overloaded']:
+                        st.warning(f"⚠️ Capacity Alert: {len(new_capacity['overloaded'])} people now overloaded")
+                    
+                    st.rerun()
+                elif errors:
+                    st.error(f"❌ Errors: {', '.join(errors[:3])}")
+        
+        with col_save2:
+            st.caption("Changes are only saved when you click 'Save Changes'")
+        
+        with col_save3:
+            # Export button
+            from utils.exporters import export_to_excel
+            excel_data = export_to_excel(edited_df)
+            st.download_button(
+                "📥 Export",
+                excel_data,
+                f"sprint_{selected_sprint_num}_planning.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+    else:
+        # View-only: just show export button
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            from utils.exporters import export_to_excel
+            excel_data = export_to_excel(edited_df)
+            st.download_button(
+                "📥 Export to Excel",
+                excel_data,
+                f"sprint_{selected_sprint_num}_planning.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
     
     st.divider()
     

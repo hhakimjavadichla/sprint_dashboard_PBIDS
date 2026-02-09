@@ -511,7 +511,7 @@ STANDARD_COLUMN_ORDER = [
     # Sprint info (for Sprint Planning, Sprint View)
     'SprintNumber', 'SprintName', 'SprintStartDt', 'SprintEndDt', 'SprintsAssigned',
     # Ticket/Task identifiers
-    'TicketNum', 'TicketType', 'Subject',
+    'TicketNum', 'TicketType', 'Subject', 'Details',
     # Task info
     'TaskNum', 'TaskCount', 'Section', 'CustomerName',
     # Status and assignment
@@ -531,7 +531,7 @@ BACKLOG_COLUMN_ORDER = [
     # Sprint assignment (key column for backlog)
     'SprintsAssigned',
     # Ticket/Task identifiers
-    'TicketNum', 'TicketType', 'Subject',
+    'TicketNum', 'TicketType', 'Subject', 'Details',
     # Task info
     'TaskNum', 'TaskCount', 'Section', 'CustomerName',
     # Status and assignment
